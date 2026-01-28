@@ -1,0 +1,8 @@
+vendor/*
+storage/*
+logs/*
+test/templates_c/*
+user_privileges/*
+!vendor/.htaccess
+.vscode/*
+config.inc.php
