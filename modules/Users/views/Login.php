@@ -110,12 +110,22 @@ class Users_Login_View extends Vtiger_View_Controller {
 		$headerScriptInstances = parent::getHeaderScripts($request);
 
 		$jsFileNames = array(
-							'~libraries/jquery/boxslider/jquery.bxslider.min.js',
+						'~libraries/jquery/boxslider/jquery.bxslider.min.js',
 							'modules.Vtiger.resources.List',
 							'modules.Vtiger.resources.Popup',
 							);
 		$jsScriptInstances = $this->checkAndConvertJsScripts($jsFileNames);
 		$headerScriptInstances = array_merge($jsScriptInstances,$headerScriptInstances);
 		return $headerScriptInstances;
+	}
+
+	function getHeaderCss(Vtiger_Request $request) {
+		$headerCssInstances = parent::getHeaderCss($request);
+		$cssFileNames = array(
+			'~layouts/v7/modules/Users/resources/Login.css',
+		);
+		$cssInstances = $this->checkAndConvertCssStyles($cssFileNames);
+		$headerCssInstances = array_merge($headerCssInstances, $cssInstances);
+		return $headerCssInstances;
 	}
 }

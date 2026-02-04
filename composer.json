@@ -18,6 +18,7 @@
 	"ext-mysqli": "*",
 	"ext-imap": "*",
 	"ext-curl": "*",
+	"ext-mbstring": "*",
         "smarty/smarty": "^4.3",
         "dg/rss-php": "^1.5",
         "ezyang/htmlpurifier": "^4.16",
@@ -26,6 +27,7 @@
         "league/oauth2-client": "^2.7",
         "phpmailer/phpmailer": "^6.9",
         "league/oauth2-google": "^4.0",
-	 "sonata-project/google-authenticator": "*"
+	 "sonata-project/google-authenticator": "*",
+	"google/apiclient": "*"
     }
 }

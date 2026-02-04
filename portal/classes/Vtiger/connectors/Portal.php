@@ -12,261 +12,342 @@ include_once 'vtlib/Vtiger/Net/Client.php';
 
 abstract class Vtiger_PortalBase_Connector extends Vtiger_Connector {
 
-	protected $client;
-	protected $auth;
+    protected $client;
+    protected $auth;
 
-	public function __construct() {
-		$this->client = new Vtiger_Net_Client(Portal_Config::get('crm.connect.url'));
-	}
+    public function __construct() {
+        $this->client = new Vtiger_Net_Client(Portal_Config::get('crm.connect.url'));
+    }
 
-	protected function api($params) {
-		if ($this->client) {
-			$this->client->setHeaders($this->auth);
-			$response = $this->client->doPost($params);
-			$responseText = json_decode($response, true);
-			if ($responseText['success'] && $responseText['result']) {
-				return $responseText['result'];
-			} else {
-				return $responseText['error'];
-			}
-			throw new Exception('Invalid Request');
-		}
-	}
+    protected function api($params) {
+        if (!$this->client) {
+            throw new Exception('HTTP client not initialized');
+        }
 
+        $this->client->setHeaders($this->auth);
+
+        $response = $this->client->doPost($params);
+        $responseText = json_decode($response, true);
+
+        // Guard against invalid / non-JSON / empty responses
+        if (!is_array($responseText)) {
+            throw new Exception('Invalid response from CRM');
+        }
+
+        $success = $responseText['success'] ?? false;
+
+        if ($success && array_key_exists('result', $responseText)) {
+            return $responseText['result'];
+        }
+
+        // Normalize error structure
+        if (isset($responseText['error'])) {
+            return $responseText['error'];
+        }
+
+        // Fallback generic error
+        return [
+            'code'    => 'UNKNOWN_ERROR',
+            'message' => 'Unknown error from CRM'
+        ];
+    }
 }
 
 class Vtiger_Portal_Connector extends Vtiger_PortalBase_Connector {
 
-	public function isAuthenticated() {
-		$this->auth = Portal_Session::get('portal_auth', null);
-		return $this->auth != null;
-	}
+    public function isAuthenticated() {
+        $this->auth = Portal_Session::get('portal_auth', null);
+        return $this->auth !== null;
+    }
 
-	public function ping($username, $password) {
-		$this->auth = array('Authorization' => 'Basic '.base64_encode($username.':'.$password));
-		$args = array(
-			'_operation' => 'Ping',
-			'username' => $username,
-			'password' => $password
-		);
-		return self::api($args);
-	}
+    public function ping($username, $password) {
+        $this->auth = [
+            'Authorization' => 'Basic ' . base64_encode($username . ':' . $password)
+        ];
 
-	public function authentication() {
-		if ($this->isAuthenticated()) {
-			$authInfo = explode(':', base64_decode(substr($this->auth['Authorization'], strlen('Basic '))));
-			array_pop($authInfo); // NOTE: password removed.
-			$authInfo['username'] = $authInfo;
-			return $authInfo;
-		}
-		return null;
-	}
+        $args = [
+            '_operation' => 'Ping',
+            'username'   => $username,
+            'password'   => $password
+        ];
 
-	public function fetchModules() {
-		$language = Portal_Session::get('language');
-		$username = Portal_Session::get('username');
-		$password = Portal_Session::get('password');
-		$this->auth = array('Authorization' => 'Basic '.base64_encode($username.':'.$password));
+        return self::api($args);
+    }
 
-		$args = array(
-			'_operation' => 'FetchModules',
-			'language' => $language,
-			'username' => $username,
-			'password' => $password
-		);
+    public function authentication() {
+        if (!$this->isAuthenticated()) {
+            return null;
+        }
 
-		$response = self::api($args);
+        $authHeader = $this->auth['Authorization'] ?? '';
+        if (stripos($authHeader, 'Basic ') !== 0) {
+            return null;
+        }
 
-		if (isset($response['contact_id']) && isset($response['contact_id']) && isset($response['contact_id'])) {
-			if ($username && $password && $response) {
-				Portal_Session::set('portal_auth', $this->auth);
-				Portal_Session::set('contact_id', $response['contact_id']['value']);
-				Portal_Session::set('parent_id', $response['account_id']['value']);
-				Portal_Session::set('parent_idLabel', $response['account_id']['label']);
-				Portal_Session::set('assigned_user_id', $response['user_id']['value']);
-			}
-		} else {
-			return null;
-		}
-		return $response;
-	}
+        $decoded = base64_decode(substr($authHeader, strlen('Basic ')));
+        if ($decoded === false) {
+            return null;
+        }
 
-	public function describeModule($module, $language) {
-		$language = Portal_Session::get('language');
-		$username = Portal_Session::get('username');
-		$password = Portal_Session::get('password');
-		$this->auth = array('Authorization' => 'Basic '.base64_encode($username.':'.$password));
+        // username:password
+        $parts = explode(':', $decoded, 2);
+        $username = $parts[0] ?? null;
+        $password = $parts[1] ?? null;
 
-		$params = array(
-			'_operation' => 'DescribeModule',
-			'module' => $module,
-			'language' => $language,
-			'username' => $username,
-			'password' => $password
-		);
+        return [
+            'username' => $username,
+            'password' => $password
+        ];
+    }
 
-		return self::api($params);
-	}
+    public function fetchModules() {
+        $language = Portal_Session::get('language');
+        $username = Portal_Session::get('username');
+        $password = Portal_Session::get('password');
 
-	public function fetchRecords($module, $label, $q = false, $filter = false, $pageNo = false, $pageLimit = false, $orderBy = false, $order = false) {
-		$username = Portal_Session::get('username');
-		$password = Portal_Session::get('password');
-		$this->auth = array('Authorization' => 'Basic '.base64_encode($username.':'.$password));
+        $this->auth = [
+            'Authorization' => 'Basic ' . base64_encode($username . ':' . $password)
+        ];
 
-		$params = array(
-			'_operation' => 'FetchRecords',
-			'module' => $module,
-			'moduleLabel' => $label,
-			'page' => $pageNo,
-			'pageLimit' => $pageLimit,
-			'fields' => $filter,
-			'orderBy' => $orderBy,
-			'order' => $order,
-			'username' => $username,
-			'password' => $password
-		);
+        $args = [
+            '_operation' => 'FetchModules',
+            'language'   => $language,
+            'username'   => $username,
+            'password'   => $password
+        ];
 
-		if ($q) {
-			$params = array_merge($params, $q);
-		}
+        $response = self::api($args);
 
-		$response = self::api($params);
-		return $this->parseListViewRecords($response, $module);
-	}
+        if (
+            isset($response['contact_id'], $response['account_id'], $response['user_id']) &&
+            $username && $password
+        ) {
+            Portal_Session::set('portal_auth', $this->auth);
+            Portal_Session::set('contact_id', $response['contact_id']['value'] ?? null);
+            Portal_Session::set('parent_id', $response['account_id']['value'] ?? null);
+            Portal_Session::set('parent_idLabel', $response['account_id']['label'] ?? null);
+            Portal_Session::set('assigned_user_id', $response['user_id']['value'] ?? null);
+        } else {
+            return null;
+        }
 
-	public function fetchRelatedRecords($relatedModule, $relatedModuleLabel, $id, $parentId, $pageNo, $pageLimit, $module = false) {
-		$username = Portal_Session::get('username');
-		$password = Portal_Session::get('password');
-		$this->auth = array('Authorization' => 'Basic '.base64_encode($username.':'.$password));
+        return $response;
+    }
 
-		$params = array(
-			'_operation' => 'FetchRelatedRecords',
-			'relatedModule' => $relatedModule,
-			'relatedModuleLabel' => $relatedModuleLabel,
-			'recordId' => $id,
-			'parentId' => $parentId,
-			'page' => $pageNo,
-			'pageLimit' => $pageLimit,
-			'module' => $module,
-			'username' => $username,
-			'password' => $password
-		);
+    public function describeModule($module, $language) {
+        $language = Portal_Session::get('language');
+        $username = Portal_Session::get('username');
+        $password = Portal_Session::get('password');
 
-		return self::api($params);
-	}
+        $this->auth = [
+            'Authorization' => 'Basic ' . base64_encode($username . ':' . $password)
+        ];
 
-	public function fetchRecord($id, $module, $parentId = '') {
-		$username = Portal_Session::get('username');
-		$password = Portal_Session::get('password');
-		$this->auth = array('Authorization' => 'Basic '.base64_encode($username.':'.$password));
+        $params = [
+            '_operation' => 'DescribeModule',
+            'module'     => $module,
+            'language'   => $language,
+            'username'   => $username,
+            'password'   => $password
+        ];
 
-		$params = array(
-			'_operation' => 'FetchRecord',
-			'module' => $module,
-			'recordId' => $id,
-			'parentId' => $parentId,
-			'username' => $username,
-			'password' => $password
-		);
+        return self::api($params);
+    }
 
-		return self::api($params);
-	}
+    public function fetchRecords($module, $label, $q = false, $filter = false, $pageNo = false, $pageLimit = false, $orderBy = false, $order = false) {
+        $username = Portal_Session::get('username');
+        $password = Portal_Session::get('password');
 
-	public function fetchHistory($module, $id, $pageNo, $pageLimit, $parentId = false) {
-		$username = Portal_Session::get('username');
-		$password = Portal_Session::get('password');
-		$this->auth = array('Authorization' => 'Basic '.base64_encode($username.':'.$password));
+        $this->auth = [
+            'Authorization' => 'Basic ' . base64_encode($username . ':' . $password)
+        ];
 
-		$params = array(
-			'_operation' => 'FetchHistory',
-			'record' => $id,
-			'module' => $module,
-			'page' => $pageNo,
-			'pageLimit' => $pageLimit,
-			'parentId' => $parentId,
-			'username' => $username,
-			'password' => $password
-		);
+        $params = [
+            '_operation'  => 'FetchRecords',
+            'module'      => $module,
+            'moduleLabel' => $label,
+            'page'        => $pageNo,
+            'pageLimit'   => $pageLimit,
+            'fields'      => $filter,
+            'orderBy'     => $orderBy,
+            'order'       => $order,
+            'username'    => $username,
+            'password'    => $password
+        ];
 
-		return self::api($params);
-	}
+        if ($q) {
+            $params = array_merge($params, $q);
+        }
 
-	public function saveRecord($module, $values, $recordId = false) {
-		$username = Portal_Session::get('username');
-		$password = Portal_Session::get('password');
-		$this->auth = array('Authorization' => 'Basic '.base64_encode($username.':'.$password));
+        $response = self::api($params);
+        return $this->parseListViewRecords($response, $module);
+    }
 
-		$params = array(
-			'_operation' => 'SaveRecord',
-			'module' => $module,
-			'values' => $values,
-			'username' => $username,
-			'password' => $password
-		);
+    public function fetchRelatedRecords($relatedModule, $relatedModuleLabel, $id, $parentId, $pageNo, $pageLimit, $module = false) {
+        $username = Portal_Session::get('username');
+        $password = Portal_Session::get('password');
 
-		if ($recordId) {
-			$params['recordId'] = $recordId;
-		}
+        $this->auth = [
+            'Authorization' => 'Basic ' . base64_encode($username . ':' . $password)
+        ];
 
-		$response = self::api($params);
-		if (is_array($response) && $module == 'Contacts' && !(empty($response['email']))) {
-			$authInfo = explode(':', base64_decode(substr($this->auth['Authorization'], strlen('Basic '))));
-			$this->auth = array('Authorization' => 'Basic '.base64_encode($response['email'].':'.$authInfo[1]));
-			$updatedAuth = explode(':', base64_decode(substr($this->auth['Authorization'], strlen('Basic '))));
-			Portal_Session::set('portal_auth', $this->auth);
-		}
-		return $response;
-	}
+        $params = [
+            '_operation'       => 'FetchRelatedRecords',
+            'relatedModule'    => $relatedModule,
+            'relatedModuleLabel' => $relatedModuleLabel,
+            'recordId'         => $id,
+            'parentId'         => $parentId,
+            'page'             => $pageNo,
+            'pageLimit'        => $pageLimit,
+            'module'           => $module,
+            'username'         => $username,
+            'password'         => $password
+        ];
 
-	public function addComment($values, $parentId) {
-		$username = Portal_Session::get('username');
-		$password = Portal_Session::get('password');
-		$this->auth = array('Authorization' => 'Basic '.base64_encode($username.':'.$password));
+        return self::api($params);
+    }
 
-		$params = array(
-			'_operation' => 'AddComment',
-			'values' => $values,
-			'parentId' => $parentId,
-			'username' => $username,
-			'password' => $password
-		);
+    public function fetchRecord($id, $module, $parentId = '') {
+        $username = Portal_Session::get('username');
+        $password = Portal_Session::get('password');
 
-		return self::api($params);
-	}
+        $this->auth = [
+            'Authorization' => 'Basic ' . base64_encode($username . ':' . $password)
+        ];
 
-	public function downloadFile($module, $q, $parentId = false, $parentModule = false, $attachmentId = false) {
-		$username = Portal_Session::get('username');
-		$password = Portal_Session::get('password');
-		$this->auth = array('Authorization' => 'Basic '.base64_encode($username.':'.$password));
+        $params = [
+            '_operation' => 'FetchRecord',
+            'module'     => $module,
+            'recordId'   => $id,
+            'parentId'   => $parentId,
+            'username'   => $username,
+            'password'   => $password
+        ];
 
-		$params = array(
-			'_operation' => 'DownloadFile',
-			'module' => $module,
-			'moduleLabel' => $module,
-			'recordId' => $q,
-			'parentId' => $parentId,
-			'parentModule' => $parentModule,
-			'attachmentId' => $attachmentId,
-			'username' => $username,
-			'password' => $password
-		);
+        return self::api($params);
+    }
 
-		return self::api($params);
-	}
+    public function fetchHistory($module, $id, $pageNo, $pageLimit, $parentId = false) {
+        $username = Portal_Session::get('username');
+        $password = Portal_Session::get('password');
 
-	public function changePassword($record) {
-		$username = Portal_Session::get('username');
-		$this->auth = array('Authorization' => 'Basic '.base64_encode($username.':'.$password));
+        $this->auth = [
+            'Authorization' => 'Basic ' . base64_encode($username . ':' . $password)
+        ];
 
-		$params = array(
-			'_operation' => 'ChangePassword',
-			'password' => $record['oldPassword'],
-			'newPassword' => $record['newPassword'],
-			'username' => $username,
-		);
-		return self::api($params);
-	}
+        $params = [
+            '_operation' => 'FetchHistory',
+            'record'     => $id,
+            'module'     => $module,
+            'page'       => $pageNo,
+            'pageLimit'  => $pageLimit,
+            'parentId'   => $parentId,
+            'username'   => $username,
+            'password'   => $password
+        ];
 
+        return self::api($params);
+    }
+
+    public function saveRecord($module, $values, $recordId = false) {
+        $username = Portal_Session::get('username');
+        $password = Portal_Session::get('password');
+
+        $this->auth = [
+            'Authorization' => 'Basic ' . base64_encode($username . ':' . $password)
+        ];
+
+        $params = [
+            '_operation' => 'SaveRecord',
+            'module'     => $module,
+            'values'     => $values,
+            'username'   => $username,
+            'password'   => $password
+        ];
+
+        if ($recordId) {
+            $params['recordId'] = $recordId;
+        }
+
+        $response = self::api($params);
+
+        // If contact email changed, update auth
+        if (is_array($response) && $module === 'Contacts' && !empty($response['email'])) {
+            $authHeader = $this->auth['Authorization'] ?? '';
+            $decoded = base64_decode(substr($authHeader, strlen('Basic ')));
+            $parts = explode(':', $decoded, 2);
+            $oldPassword = $parts[1] ?? '';
+
+            $this->auth = [
+                'Authorization' => 'Basic ' . base64_encode($response['email'] . ':' . $oldPassword)
+            ];
+
+            Portal_Session::set('portal_auth', $this->auth);
+        }
+
+        return $response;
+    }
+
+    public function addComment($values, $parentId) {
+        $username = Portal_Session::get('username');
+        $password = Portal_Session::get('password');
+
+        $this->auth = [
+            'Authorization' => 'Basic ' . base64_encode($username . ':' . $password)
+        ];
+
+        $params = [
+            '_operation' => 'AddComment',
+            'values'     => $values,
+            'parentId'   => $parentId,
+            'username'   => $username,
+            'password'   => $password
+        ];
+
+        return self::api($params);
+    }
+
+    public function downloadFile($module, $q, $parentId = false, $parentModule = false, $attachmentId = false) {
+        $username = Portal_Session::get('username');
+        $password = Portal_Session::get('password');
+
+        $this->auth = [
+            'Authorization' => 'Basic ' . base64_encode($username . ':' . $password)
+        ];
+
+        $params = [
+            '_operation'  => 'DownloadFile',
+            'module'      => $module,
+            'moduleLabel' => $module,
+            'recordId'    => $q,
+            'parentId'    => $parentId,
+            'parentModule'=> $parentModule,
+            'attachmentId'=> $attachmentId,
+            'username'    => $username,
+            'password'    => $password
+        ];
+
+        return self::api($params);
+    }
+
+public function changePassword($record) {
+
+    $username = Portal_Session::get('username');
+    $password = Portal_Session::get('password');
+
+    $this->auth = [
+        'Authorization' => 'Basic ' . base64_encode($username . ':' . $password)
+    ];
+
+    $params = [
+        '_operation'  => 'ChangePassword',
+        'username'    => $username,
+        'password'    => $record['oldPassword'] ?? '',
+        'newPassword' => $record['newPassword'] ?? ''
+    ];
+
+    return self::api($params);
+}
 	public function fetchProfile() {
 		$username = Portal_Session::get('username');
 		$password = Portal_Session::get('password');
@@ -280,256 +361,343 @@ class Vtiger_Portal_Connector extends Vtiger_PortalBase_Connector {
 		return self::api($params);
 	}
 
-	public function uploadAttachment($module, $parentId = '') {
-		$url = Portal_Config::get('crm.connect.url');
-		if (isset($_FILES)) {
+public function uploadAttachment($module, $parentId = '') {
 
-			$username = Portal_Session::get('username');
-			$password = Portal_Session::get('password');
-			$this->auth = array('Authorization' => 'Basic '.base64_encode($username.':'.$password));
+    if (empty($_FILES['file']) || !is_uploaded_file($_FILES['file']['tmp_name'])) {
+        return [
+            'success' => false,
+            'message' => 'No file uploaded'
+        ];
+    }
 
-			$authInfo = explode(':', base64_decode(substr($this->auth['Authorization'], strlen('Basic '))));
-			$header = array('Content-Type:multipart/form-data');
+    $username = Portal_Session::get('username');
+    $password = Portal_Session::get('password');
 
-			$file = null;
-			if (class_exists('CURLFile')) { /* PHP 5.5+ */
-				$file = new CURLFile($_FILES['file']['tmp_name'], $_FILES['file']['type'], $_FILES['file']['name']);
-			} else {
-				$file = '@'.$_FILES['file']['tmp_name'].';filename='.$_FILES['file']['name'].';type='.$_FILES['file']['type'];
-			}
+    $this->auth = [
+        'Authorization' => 'Basic ' . base64_encode($username . ':' . $password)
+    ];
 
-			$data = array(
-				'file' => $file,
-				'_operation' => 'SaveRecord',
-				'module' => $module,
-				'parentId' => $parentId,
-				'filename' => $_FILES['file']['name'],
-				'username' => $username,
-				'password' => $password
-			);
-			$resource = curl_init();
-			curl_setopt($resource, CURLOPT_URL, $url);
-			curl_setopt($resource, CURLOPT_HTTPHEADER, $header);
-			curl_setopt($resource, CURLOPT_USERPWD, $authInfo[0].":".$authInfo[1]);
-			curl_setopt($resource, CURLOPT_POST, 1);
-			curl_setopt($resource, CURLOPT_RETURNTRANSFER, 1);
-			curl_setopt($resource, CURLOPT_POSTFIELDS, $data);
-			$response = curl_exec($resource);
-			$info = curl_getinfo($resource);
-			curl_close($resource);
-			$responseText = json_decode($response, true);
-			if ($responseText['success']) {
-				return $responseText['result'];
-			} else {
-				return $responseText['error']['message'];
-			}
-		}
-	}
+    $url = Portal_Config::get('crm.connect.url');
 
-	public function forgotPassword($email) {
-		$params = array(
-			'_operation' => 'ForgotPassword',
-			'email' => $email
-		);
-		$this->auth = array('Authorization' => 'Basic '.base64_encode($email.':'.''));
-		$response = self::api($params);
-		return $response;
-	}
+    $file = new CURLFile(
+        $_FILES['file']['tmp_name'],
+        $_FILES['file']['type'],
+        $_FILES['file']['name']
+    );
 
-	public function fetchRelatedModules($module) {
-		$username = Portal_Session::get('username');
-		$password = Portal_Session::get('password');
-		$this->auth = array('Authorization' => 'Basic '.base64_encode($username.':'.$password));
+    $data = [
+        '_operation' => 'SaveRecord',
+        'module'     => $module,
+        'parentId'   => $parentId,
+        'filename'   => $_FILES['file']['name'],
+        'file'       => $file,
+        'username'   => $username,
+        'password'   => $password
+    ];
 
-		$params = array(
-			'_operation' => 'FetchRelatedModules',
-			'module' => $module,
-			'username' => $username,
-			'password' => $password
-		);
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: multipart/form-data']);
+    curl_setopt($ch, CURLOPT_USERPWD, $username . ':' . $password);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
 
-		return self::api($params);
-	}
+    $response = curl_exec($ch);
+    curl_close($ch);
 
-	public function fetchAnnouncement() {
-		$username = Portal_Session::get('username');
-		$password = Portal_Session::get('password');
-		$this->auth = array('Authorization' => 'Basic '.base64_encode($username.':'.$password));
+    $responseText = json_decode($response, true);
 
-		$params = array(
-			'_operation' => 'FetchAnnouncement',
-			'username' => $username,
-			'password' => $password
-		);
+    if (!is_array($responseText)) {
+        return [
+            'success' => false,
+            'message' => 'Invalid response from CRM'
+        ];
+    }
 
-		return self::api($params);
-	}
+    if (!empty($responseText['success']) && isset($responseText['result'])) {
+        return $responseText['result'];
+    }
 
-	public function fetchShortcuts() {
-		$username = Portal_Session::get('username');
-		$password = Portal_Session::get('password');
-		$this->auth = array('Authorization' => 'Basic '.base64_encode($username.':'.$password));
+    return $responseText['error']['message'] ?? 'Unknown error';
+}
 
-		$params = array(
-			'_operation' => 'FetchShortcuts',
-			'username' => $username,
-			'password' => $password
-		);
+public function forgotPassword($email) {
 
-		return self::api($params);
-	}
+    // Basic Auth with empty password is allowed for ForgotPassword
+    $this->auth = [
+        'Authorization' => 'Basic ' . base64_encode($email . ':')
+    ];
 
-	public function fetchRecentRecords($language) {
-		$language = Portal_Session::get('language');
-		$username = Portal_Session::get('username');
-		$password = Portal_Session::get('password');
-		$this->auth = array('Authorization' => 'Basic '.base64_encode($username.':'.$password));
+    $params = [
+        '_operation' => 'ForgotPassword',
+        'email'      => $email
+    ];
 
-		$params = array(
-			'_operation' => 'FetchRecentRecords',
-			'language' => $language,
-			'username' => $username,
-			'password' => $password
-		);
+    return self::api($params);
+}
 
-		return self::api($params);
-	}
+public function fetchRelatedModules($module) {
 
-	public function fetchReferenceRecords($module, $query) {
-		$username = Portal_Session::get('username');
-		$password = Portal_Session::get('password');
-		$this->auth = array('Authorization' => 'Basic '.base64_encode($username.':'.$password));
+    $username = Portal_Session::get('username');
+    $password = Portal_Session::get('password');
 
-		$params = array(
-			'_operation' => 'FetchReferenceRecords',
-			'module' => $module,
-			'searchKey' => $query,
-			'username' => $username,
-			'password' => $password
-		);
+    $this->auth = [
+        'Authorization' => 'Basic ' . base64_encode($username . ':' . $password)
+    ];
 
-		return self::api($params);
-	}
+    $params = [
+        '_operation' => 'FetchRelatedModules',
+        'module'     => $module,
+        'username'   => $username,
+        'password'   => $password
+    ];
 
-	public function fetchCompanyDetails() {
-		$username = Portal_Session::get('username');
-		$password = Portal_Session::get('password');
-		$this->auth = array('Authorization' => 'Basic '.base64_encode($username.':'.$password));
+    return self::api($params);
+}
 
-		$params = array(
-			'_operation' => 'FetchCompanyDetails',
-			'username' => $username,
-			'password' => $password
-		);
+public function fetchAnnouncement() {
 
-		return self::api($params);
-	}
+    $username = Portal_Session::get('username');
+    $password = Portal_Session::get('password');
 
-	public function fetchCompanyTitle() {
-		$username = Portal_Session::get('username');
-		$password = Portal_Session::get('password');
-		$this->auth = array('Authorization' => 'Basic '.base64_encode($username.':'.$password));
+    $this->auth = [
+        'Authorization' => 'Basic ' . base64_encode($username . ':' . $password)
+    ];
 
-		$params = array(
-			'_operation' => 'FetchCompanyTitle',
-			'username' => $username,
-			'password' => $password
-		);
+    $params = [
+        '_operation' => 'FetchAnnouncement',
+        'username'   => $username,
+        'password'   => $password
+    ];
 
-		return self::api($params);
-	}
+    return self::api($params);
+}
 
-	public function exportRecords($module, $label, $q = false, $filter = false) {
-		$username = Portal_Session::get('username');
-		$password = Portal_Session::get('password');
-		$this->auth = array('Authorization' => 'Basic '.base64_encode($username.':'.$password));
+public function fetchShortcuts() {
 
-		$params = array(
-			'_operation' => 'ExportRecords',
-			'module' => $module,
-			'moduleLabel' => $label,
-			'fields' => $filter,
-			'username' => $username,
-			'password' => $password
-		);
+    $username = Portal_Session::get('username');
+    $password = Portal_Session::get('password');
 
-		if ($q) {
-			$params = array_merge($params, $q);
-		}
-		return self::api($params);
-	}
+    $this->auth = [
+        'Authorization' => 'Basic ' . base64_encode($username . ':' . $password)
+    ];
 
-	public function searchFaqs($module, $searchKey) {
-		$username = Portal_Session::get('username');
-		$password = Portal_Session::get('password');
-		$this->auth = array('Authorization' => 'Basic '.base64_encode($username.':'.$password));
+    $params = [
+        '_operation' => 'FetchShortcuts',
+        'username'   => $username,
+        'password'   => $password
+    ];
 
-		$params = array(
-			'_operation' => 'SearchFaqs',
-			'module' => $module,
-			'searchKey' => $searchKey,
-			'username' => $username,
-			'password' => $password
-		);
+    return self::api($params);
+}
 
-		return self::api($params);
-	}
+public function fetchRecentRecords($language = null) {
 
-	public function searchRecords($searchKey) {
-		$username = Portal_Session::get('username');
-		$password = Portal_Session::get('password');
-		$this->auth = array('Authorization' => 'Basic '.base64_encode($username.':'.$password));
+    $language = Portal_Session::get('language');
+    $username = Portal_Session::get('username');
+    $password = Portal_Session::get('password');
 
-		$params = array(
-			'_operation' => 'SearchRecords',
-			'searchKey' => $searchKey,
-			'username' => $username,
-			'password' => $password
-		);
+    $this->auth = [
+        'Authorization' => 'Basic ' . base64_encode($username . ':' . $password)
+    ];
 
-		return self::api($params);
-	}
+    $params = [
+        '_operation' => 'FetchRecentRecords',
+        'language'   => $language,
+        'username'   => $username,
+        'password'   => $password
+    ];
 
-	protected function parseListViewRecords($response, $module) {
-		if ($response['count'] === null) {
-			return $response;
-		}
-		$edit = $headers = $records = array();
-		for ($i = 0; $i < count($response) - 1; $i++) {
-			if ($response[$i]) {
-				$record = array();
-				if (!is_array($response[$i]))
-					continue;
-				foreach ($response[$i] as $field => $value) {
-					if ($i == 0) {
-						$headers[] = $field;
-						$edit[$field] = $field;
-					}
-					if (is_array($value)) {
-						$record[$field] = $value['label'];
-					} else {
-						$record[$field] = $value;
-					}
-				}
-			}
-			$records[] = $record;
-		}
-		return array('headers' => $headers, 'records' => $records, 'edit' => $edit, 'count' => (int) $response['count']);
-	}
+    return self::api($params);
+}
+
+public function fetchReferenceRecords($module, $query) {
+
+    $username = Portal_Session::get('username');
+    $password = Portal_Session::get('password');
+
+    $this->auth = [
+        'Authorization' => 'Basic ' . base64_encode($username . ':' . $password)
+    ];
+
+    $params = [
+        '_operation' => 'FetchReferenceRecords',
+        'module'     => $module,
+        'searchKey'  => $query,
+        'username'   => $username,
+        'password'   => $password
+    ];
+
+    return self::api($params);
+}
+
+public function fetchCompanyDetails() {
+
+    $username = Portal_Session::get('username');
+    $password = Portal_Session::get('password');
+
+    $this->auth = [
+        'Authorization' => 'Basic ' . base64_encode($username . ':' . $password)
+    ];
+
+    $params = [
+        '_operation' => 'FetchCompanyDetails',
+        'username'   => $username,
+        'password'   => $password
+    ];
+
+    return self::api($params);
+}
+
+public function fetchCompanyTitle() {
+
+    $username = Portal_Session::get('username');
+    $password = Portal_Session::get('password');
+
+    $this->auth = [
+        'Authorization' => 'Basic ' . base64_encode($username . ':' . $password)
+    ];
+
+    $params = [
+        '_operation' => 'FetchCompanyTitle',
+        'username'   => $username,
+        'password'   => $password
+    ];
+
+    return self::api($params);
+}
+
+public function exportRecords($module, $label, $q = false, $filter = false) {
+
+    $username = Portal_Session::get('username');
+    $password = Portal_Session::get('password');
+
+    $this->auth = [
+        'Authorization' => 'Basic ' . base64_encode($username . ':' . $password)
+    ];
+
+    $params = [
+        '_operation'  => 'ExportRecords',
+        'module'      => $module,
+        'moduleLabel' => $label,
+        'fields'      => $filter,
+        'username'    => $username,
+        'password'    => $password
+    ];
+
+    if ($q) {
+        $params = array_merge($params, $q);
+    }
+
+    return self::api($params);
+}
+
+public function searchFaqs($module, $searchKey) {
+
+    $username = Portal_Session::get('username');
+    $password = Portal_Session::get('password');
+
+    $this->auth = [
+        'Authorization' => 'Basic ' . base64_encode($username . ':' . $password)
+    ];
+
+    $params = [
+        '_operation' => 'SearchFaqs',
+        'module'     => $module,
+        'searchKey'  => $searchKey,
+        'username'   => $username,
+        'password'   => $password
+    ];
+
+    return self::api($params);
+}
+
+public function searchRecords($searchKey) {
+
+    $username = Portal_Session::get('username');
+    $password = Portal_Session::get('password');
+
+    $this->auth = [
+        'Authorization' => 'Basic ' . base64_encode($username . ':' . $password)
+    ];
+
+    $params = [
+        '_operation' => 'SearchRecords',
+        'searchKey'  => $searchKey,
+        'username'   => $username,
+        'password'   => $password
+    ];
+
+    return self::api($params);
+}
+
+protected function parseListViewRecords($response, $module) {
+
+    // If count is missing or null, return raw response
+    if (!isset($response['count']) || $response['count'] === null) {
+        return $response;
+    }
+
+    $headers = [];
+    $records = [];
+    $edit    = [];
+
+    // Remove count so we can iterate cleanly
+    $count = (int)$response['count'];
+    unset($response['count']);
+
+    foreach ($response as $index => $row) {
+
+        if (!is_array($row)) {
+            continue;
+        }
+
+        $record = [];
+
+        foreach ($row as $field => $value) {
+
+            // Build headers only once
+            if ($index === 0) {
+                $headers[] = $field;
+                $edit[$field] = $field;
+            }
+
+            // Normalize reference values
+            if (is_array($value)) {
+                $record[$field] = $value['label'] ?? '';
+            } else {
+                $record[$field] = $value;
+            }
+
+        }
+
+        $records[] = $record;
+    }
+
+    return [
+        'headers' => $headers,
+        'records' => $records,
+        'edit'    => $edit,
+        'count'   => $count
+    ];
+}
 
 	public function updateLoginDetails($status) {
-		$username = Portal_Session::get('username');
-		$password = Portal_Session::get('password');
-		$this->auth = array('Authorization' => 'Basic '.base64_encode($username.':'.$password));
 
-		$args = array(
-			'_operation' => 'UpdateLoginDetails',
-			'status' => $status,
-			'username' => $username,
-			'password' => $password
-		);
+	    $username = Portal_Session::get('username');
+	    $password = Portal_Session::get('password');
 
-		return self::api($args);
+	    $this->auth = [
+	        'Authorization' => 'Basic ' . base64_encode($username . ':' . $password)
+	    ];
+
+	    $args = [
+	        '_operation' => 'UpdateLoginDetails',
+	        'status'     => $status,
+	        'username'   => $username,
+	        'password'   => $password
+	    ];
+
+	    return self::api($args);
 	}
-
 }

@@ -17,3 +17,4 @@ class Portal_Ping_API extends Portal_Default_API {
 	}
 
 }
+

@@ -13,14 +13,14 @@ return array(
     // Create project in https://console.cloud.google.com
     // Enable Oauth2 Web Client and update details below.
     "Google" => array(
-        "clientId" => "",
-        "clientSecret" => "",
+        "clientId" => "867319045560-sk9prsbon35qt98ie3e83mf2pojh161r.apps.googleusercontent.com",
+        "clientSecret" => "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",
     ),
 
     // Setup XOAUTH2 Imap Proxy Service
     // https://code.vtiger.com/vtiger/vtigercrm/-/issues/1914
     // Update host:port details here.
     "Proxies" => array(
-        "imap.gmail.com" => ""
+        "imap.gmail.com" => "127.0.0.1:993"
     )
 );

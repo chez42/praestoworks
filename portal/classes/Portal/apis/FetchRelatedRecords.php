@@ -10,101 +10,145 @@
 
 class Portal_FetchRelatedRecords_API extends Portal_Default_API {
 
-	public function process(Portal_Request $request) {
-		$pageNo = $request->get('page');
-		$module = $request->get('module');
-		$language = Portal_Session::get('language');
-		if (empty($pageNo)) {
-			$pageNo = 0;
-		}
-		$pageLimit = $request->get('pageLimit');
-		if (empty($pageLimit)) {
-			$pageLimit = 10;
-		}
-		$result = Vtiger_Connector::getInstance()->fetchRelatedRecords($request->get('relatedModule'), $request->get('relatedModuleLabel'), $request->get('id'), $request->get('parentId'), $pageNo, $pageLimit, $module);
-		$response = new Portal_Response();
-		$response->setResult($this->processRelatedRecordsResponse($result, $request->get('relatedModule'), $language));
+    public function process(Portal_Request $request) {
 
-		return $response;
-	}
+        $pageNo    = $request->get('page') ?? 0;
+        $pageLimit = $request->get('pageLimit') ?? 10;
+        $module    = $request->get('module');
+        $language  = Portal_Session::get('language');
 
-	public function processRelatedRecordsResponse($result, $relatedModule, $language) {
-		$response = array();
-		if (!$result) {
-			$result = array();
-		}
+        $relatedModule       = $request->get('relatedModule');
+        $relatedModuleLabel  = $request->get('relatedModuleLabel');
+        $recordId            = $request->get('id');
+        $parentId            = $request->get('parentId');
 
-		if ($relatedModule == 'ModComments') {
-			$response['comments'] = $result;
-			$response['more'] = $result['more'];
-			return $response;
-		}
-		$recordMeta = parent::processResponse($relatedModule, $language);
-		$headers = $records = $dateTimeFields = array();
-		$more = $result['more'];
-		unset($result['more']);
-		for ($i = 0; $i < count($result); $i++) {
-			if ($result[$i]) {
-				$record = array();
-				foreach ($result[$i] as $field => $value) {
-					if ($i == 0) {
-						$headers[] = $recordMeta[$field]['label'];
-					}
-					if (is_array($value)) {
-						$record[$recordMeta[$field]['label']] = $value['label'];
-					} else {
-						if ($recordMeta[$field]['type'] == 'double' || $recordMeta[$field]['type'] == 'currency') {
-							$value = round($value, 2);
-						}
-						if ($recordMeta[$field]['type'] == 'multipicklist') {
-							$value = str_replace(' |##| ', ",", $value);
-						}
-						if ($recordMeta[$field]['type'] == 'boolean') {
-							$value = $value == 1 ? "Yes" : "No";
-						}
-						if ($recordMeta[$field]['type'] == 'text') {
-							$value = strip_tags($value);
-							$value = preg_replace('/<br(\s+)?\/?>/i', "\n", $value);
-						}
-						if ($field == 'filelocationtype' && $relatedModule == 'Documents') {
-							if ($value !== '' && $value == "I") {
-								$value = "Internal";
-							}
-							if ($value !== '' && $value == "E") {
-								$value = "External";
-							}
-						}
-						if ($recordMeta[$field]['type'] == 'multipicklist') {
-							$value = str_replace(' |##| ', ',', $value);
-						}
-						if ($recordMeta[$field]['type'] == 'datetime') {
-							$dateTimeFields[] = $recordMeta[$field]['label'];
-						}
-						if ($recordMeta[$field]['type'] == "file" && $field == 'filename' && $relatedModule == 'Documents') {
-							$docExists = true;
-							if ($value == '') {
-								$docExists = false;
-							}
-						}
-						if ($field == 'filesize' && $recordMeta[$field]['type'] == 'integer' && $relatedModule == 'Documents') {
-							$value = round(($value / 1024), 2).'KB';
-						}
-						$record[$recordMeta[$field]['label']] = $value;
-						if ($relatedModule === 'Documents') {
-							if ($field === 'filename') {
-								$record['filename'] = $value;
-							}
-						}
-					}
-				}
-			}
-			if ($docExists) {
-				$record['documentExists'] = true;
-			}
-			$records[] = $record;
-		}
-		$dateTimeFields = array_unique($dateTimeFields);
-		return array('headers' => $headers, 'records' => $records, 'dateTimeFields' => $dateTimeFields, 'more' => $more);
-	}
+        $result = Vtiger_Connector::getInstance()->fetchRelatedRecords(
+            $relatedModule,
+            $relatedModuleLabel,
+            $recordId,
+            $parentId,
+            $pageNo,
+            $pageLimit
+        );
 
+        $response = new Portal_Response();
+        $response->setResult(
+            $this->processRelatedRecordsResponse($result, $relatedModule, $language)
+        );
+
+        return $response;
+    }
+
+
+    public function processRelatedRecordsResponse($result, $relatedModule, $language) {
+
+        if (!$result) {
+            $result = [];
+        }
+
+        // Handle ModComments separately
+        if ($relatedModule === 'ModComments') {
+            return [
+                'comments' => $result,
+                'more'     => $result['more'] ?? false
+            ];
+        }
+
+        $recordMeta = parent::processResponse($relatedModule, $language);
+
+        $headers        = [];
+        $records        = [];
+        $dateTimeFields = [];
+
+        // Safe "more" flag
+        $more = $result['more'] ?? false;
+        unset($result['more']);
+
+        foreach ($result as $row) {
+
+            if (!$row) {
+                continue;
+            }
+
+            $record    = [];
+            $docExists = false;
+
+            foreach ($row as $field => $value) {
+
+                // Safe metadata lookup
+                $meta  = $recordMeta[$field] ?? null;
+                $type  = $meta['type']  ?? null;
+                $label = $meta['label'] ?? $field;
+
+                // Build headers only once
+                if (empty($headers)) {
+                    $headers[] = $label;
+                }
+
+                // Reference fields
+                if (is_array($value)) {
+                    $record[$label] = $value['label'] ?? '';
+                    continue;
+                }
+
+                // Type-based transformations
+                if ($type === 'double' || $type === 'currency') {
+                    $value = round((float)$value, 2);
+                }
+
+                if ($type === 'multipicklist') {
+                    $value = str_replace(' |##| ', ',', $value);
+                }
+
+                if ($type === 'boolean') {
+                    $value = ((int)$value === 1) ? "Yes" : "No";
+                }
+
+                if ($type === 'text') {
+                    $value = strip_tags($value);
+                    $value = preg_replace('/<br(\s+)?\/?>/i', "\n", $value);
+                }
+
+                if ($relatedModule === 'Documents' && $field === 'filelocationtype') {
+                    if ($value === "I") $value = "Internal";
+                    if ($value === "E") $value = "External";
+                }
+
+                if ($type === 'datetime') {
+                    $dateTimeFields[] = $label;
+                }
+
+                if ($relatedModule === 'Documents' && $type === 'file' && $field === 'filename') {
+                    $docExists = !empty($value);
+                }
+
+                if ($relatedModule === 'Documents' && $field === 'filesize' && $type === 'integer') {
+                    $value = round(((float)$value / 1024), 2) . 'KB';
+                }
+
+                // Assign transformed value
+                $record[$label] = $value;
+
+                // Preserve filename for Documents
+                if ($relatedModule === 'Documents' && $field === 'filename') {
+                    $record['filename'] = $value;
+                }
+            }
+
+            if ($docExists) {
+                $record['documentExists'] = true;
+            }
+
+            $records[] = $record;
+        }
+
+        $dateTimeFields = array_unique($dateTimeFields);
+
+        return [
+            'headers'        => $headers,
+            'records'        => $records,
+            'dateTimeFields' => $dateTimeFields,
+            'more'           => $more
+        ];
+    }
 }

@@ -10,17 +10,28 @@
 
 class Portal_FetchCompanyTitle_API extends Portal_Default_API {
 
-	public function requireLogin() {
-		return false;
-	}
+    public function requireLogin() {
+        return false;
+    }
 
-	public function process(Portal_Request $request) {
-		$companyDetails = Vtiger_Connector::getInstance()->fetchCompanyTitle();
-		$result = array();
-		$result['result'] = $companyDetails['organizationname'];
-		$response = new Portal_Response();
-		$response->setResult($result);
-		return $response;
-	}
+    public function process(Portal_Request $request) {
 
+        $companyDetails = Vtiger_Connector::getInstance()->fetchCompanyTitle();
+
+        // Normalize all possible vtiger field names
+        $title =
+            $companyDetails['organizationname']
+            ?? $companyDetails['companyname']
+            ?? $companyDetails['organization_name']
+            ?? $companyDetails['company_name']
+            ?? $companyDetails['title']
+            ?? '';
+
+        $response = new Portal_Response();
+        $response->setResult([
+            'result' => $title
+        ]);
+
+        return $response;
+    }
 }

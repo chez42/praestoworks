@@ -6,3 +6,4 @@ user_privileges/*
 !vendor/.htaccess
 .vscode/*
 config.inc.php
+portal/writeable/templates_c/default/*

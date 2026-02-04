@@ -11,23 +11,42 @@
 class Portal_FetchRecentRecords_API extends Portal_Default_API {
 
     public function process(Portal_Request $request) {
+
+        // Always define language
+        $language = Portal_Session::get('language');
+        if (empty($language)) {
+            $language = $request->getLanguage();
+        }
+
         $response = new Portal_Response();
+
+        // Pass language safely
         $result = Vtiger_Connector::getInstance()->fetchRecentRecords($language);
-        $response->setResult($this->processRecentRecords($result));
+
+        $response->setResult(
+            $this->processRecentRecords($result)
+        );
+
         return $response;
     }
 
     public function processRecentRecords($result) {
-        $recentRecords = array();
+
+        $recentRecords = [];
+
         foreach ($result as $key => $value) {
             foreach ($value as $module => $records) {
                 foreach ($records as $labelid => $info) {
-                    $records[$labelid]['label']=html_entity_decode($info['label'], ENT_QUOTES, 'utf-8');
+
+                    // Decode label safely
+                    $records[$labelid]['label'] =
+                        html_entity_decode($info['label'], ENT_QUOTES, 'utf-8');
+
                     $recentRecords['records'][$module][] = $records[$labelid];
                 }
             }
         }
+
         return $recentRecords;
     }
-
 }

@@ -10,128 +10,196 @@
 
 class Portal_FetchRecords_API extends Portal_Default_API {
 
-	public function process(Portal_Request $request) {
-		$module = $request->getModule();
-		$language = Portal_Session::get('language');
-		$params = $request->get('q');
-		$pageNo = $params['page'];
-		$filter = $request->get('filter');
-		if (empty($pageNo))
-			$pageNo = 0;
-		$pageLimit = $params['pageLimit'];
-		if (empty($pageLimit))
-			$pageLimit = 10;
-		if (!empty($filter)) {
-			$params['fields'] = json_encode($filter);
-		}
-		$order = $params['order'];
-		$orderBy = $params['orderBy'];
-		$result = Vtiger_Connector::getInstance()->fetchRecords($module, $request->get('label'), $request->get('q', array()), $params['fields'], $pageNo, $pageLimit);
-		$response = new Portal_Response();
-		$response->setResult($this->processRecordsResponse($result, $module, $language));
-		return $response;
-	}
+    public function process(Portal_Request $request) {
 
-	public function processRecordsResponse($result, $module, $language, $isExport = false) {
-		if ($result['records'] === null) {
-			return $result;
-		}
-		$headers = $result['headers'];
-		$records = $result['records'];
-		$edits = $result['edit'];
-		unset($result['edit']);
-		$recordMeta = parent::processResponse($module, $language);
-		$headerNames = array();
-		$editFieldNames = array();
-		foreach ($headers as $key) {
-			array_push($headerNames, $recordMeta[$key]['label']);
-		}
-		foreach ($edits as $key) {
-			$editFieldNames[$recordMeta[$key]['label']] = $key;
-		}
-		foreach ($records as $key => $value) {
-			foreach ($value as $fieldLabel => $fieldValue) {
+        $module   = $request->getModule();
+        $language = Portal_Session::get('language');
 
-				if ($recordMeta[$fieldLabel]['type'] == 'picklist') {
+        // Always treat q as an array
+        $params = $request->get('q', []);
+        if (!is_array($params)) {
+            $params = [];
+        }
 
-					foreach ($recordMeta[$fieldLabel]['picklistValues'] as $key1 => $value1) {
-						if ($value[$fieldLabel] == $value1['value']) {
+        // Safe extraction with defaults
+        $pageNo     = $params['page']      ?? 0;
+        $pageLimit  = $params['pageLimit'] ?? 10;
+        $order      = $params['order']     ?? null;
+        $orderBy    = $params['orderBy']   ?? null;
+        $fields     = $params['fields']    ?? null;
 
-							$fieldValue = $value1['label'];
-						}
-					}
-				}
-				if ($recordMeta[$fieldLabel]['type'] == 'multipicklist') {
-					$fieldValue = str_replace(' |##| ', ",", $fieldValue);
-				}
-				if ($recordMeta[$fieldLabel]['type'] == 'double' || $recordMeta[$fieldLabel]['type'] == 'currency') {
-					$fieldValue = round($fieldValue, 2);
-				}
-				if ($recordMeta[$fieldLabel]['type'] == 'boolean') {
-					$fieldValue = $fieldValue == 1 ? "Yes" : "No";
-				}
-				if ($recordMeta[$fieldLabel]['type'] == 'integer' && $module == 'Documents' && $fieldLabel == 'filesize') {
+        // Handle filter → fields mapping
+        $filter = $request->get('filter');
+        if (!empty($filter)) {
+            $fields = json_encode($filter);
+        }
 
-					$fieldValue = round(($fieldValue / 1024), 2).'KB';
-				}
-				if ($recordMeta[$fieldLabel]['type'] == 'string' && $fieldLabel == 'filelocationtype' && $module == 'Documents') {
-					if ($fieldValue !== '' && $fieldValue == "I") {
-						$fieldValue = "Internal";
-					}
-					if ($fieldValue !== '' && $fieldValue == "E") {
-						$fieldValue = "External";
-					}
-				}
-				if ($recordMeta[$fieldLabel]['type'] == "text") {
-					$fieldValue = strip_tags($fieldValue);
-					$fieldValue = preg_replace('/<br(\s+)?\/?>/i', "\n", $fieldValue);
-				}
-				if ($recordMeta[$fieldLabel]['type'] == "file" && $fieldLabel == 'filename' && $module == 'Documents') {
-					$docExists = true;
-					if ($fieldValue == '') {
-						$docExists = false;
-					}
-				}
-				if ($fieldLabel !== 'id') {
-					$fieldValue = strip_tags($fieldValue);
-					$value[$recordMeta[$fieldLabel]['label']] = $fieldValue;
-					if ($module == 'Documents') {
-						if ($fieldLabel !== "filename") {
-							unset($value[$fieldLabel]);
-						}
-					} else {
-						unset($value[$fieldLabel]);
-					}
-				}
-				if ($isExport) {
-					unset($value['id']);
-				}
-			}
-			$records[$key] = $value;
-			if ($docExists && $module == 'Documents') {
-				$records[$key]['documentExists'] = true;
-			}
-		}
-		$result['headers'] = $headerNames;
-		$result['records'] = $records;
-		$result['editLabels'] = $editFieldNames;
-		$result['pageLimit'] = 10;
-		return $result;
-	}
+        // Ensure fields is always a string or null
+        if ($fields !== null && !is_string($fields)) {
+            $fields = json_encode($fields);
+        }
 
-	public function convertElapsedTime($value, $currentDate) {
-		$minutes = (strtotime($currentDate) - strtotime($value)) / 60;
-		$timeString = '';
-		if ($minutes != 'NULL' && $value !== '0000-00-00 00:00:00') {
-			$minutes = $minutes * 60;
-			$s = (floor($minutes % 60) > 0) ? ($minutes % 60).' seconds ' : '';
-			$m = (floor(($minutes % 3600) / 60) > 0) ? floor(($minutes % 3600) / 60).' minutes' : '';
-			$h = (floor(($minutes % 86400) / 3600) > 0) ? floor(($minutes % 86400) / 3600).' hours' : '';
-			$d = (floor(($minutes % 2592000) / 86400) > 0) ? floor(($minutes % 2592000) / 86400).' days' : '';
-			$Mo = (floor($minutes / 2592000) > 0) ? floor($minutes / 2592000).' months' : '';
-			$timeString = "$Mo $d $h $m $s";
-		}
-		return $timeString;
-	}
+        // Fetch records safely
+        $result = Vtiger_Connector::getInstance()->fetchRecords(
+            $module,
+            $request->get('label'),
+            $params,
+            $fields,
+            $pageNo,
+            $pageLimit
+        );
 
+        $response = new Portal_Response();
+        $response->setResult(
+            $this->processRecordsResponse($result, $module, $language)
+        );
+
+        return $response;
+    }
+
+
+    public function processRecordsResponse($result, $module, $language, $isExport = false) {
+
+        // If vtiger returned null, just return the raw result
+        if (!isset($result['records']) || $result['records'] === null) {
+            return $result;
+        }
+
+        $headers = $result['headers'] ?? [];
+        $records = $result['records'] ?? [];
+        $edits   = $result['edit']    ?? [];
+
+        unset($result['edit']);
+
+        // Metadata for field labels/types
+        $recordMeta = parent::processResponse($module, $language);
+
+        $headerNames    = [];
+        $editFieldNames = [];
+
+        // Build header labels safely
+        foreach ($headers as $key) {
+            if (isset($recordMeta[$key]['label'])) {
+                $headerNames[] = $recordMeta[$key]['label'];
+            } else {
+                $headerNames[] = $key;
+            }
+        }
+
+        // Build editable field labels safely
+        foreach ($edits as $key) {
+            if (isset($recordMeta[$key]['label'])) {
+                $editFieldNames[$recordMeta[$key]['label']] = $key;
+            }
+        }
+
+        // Process each record
+        foreach ($records as $rowIndex => $row) {
+
+            $docExists = false; // Always initialize
+
+            foreach ($row as $fieldName => $fieldValue) {
+
+                // Skip unknown metadata safely
+                $meta  = $recordMeta[$fieldName] ?? null;
+                $type  = $meta['type']  ?? null;
+                $label = $meta['label'] ?? $fieldName;
+
+                // Type-based transformations
+                if ($type === 'picklist' && isset($meta['picklistValues'])) {
+                    foreach ($meta['picklistValues'] as $opt) {
+                        if ($fieldValue == $opt['value']) {
+                            $fieldValue = $opt['label'];
+                            break;
+                        }
+                    }
+                }
+
+                if ($type === 'multipicklist') {
+                    $fieldValue = str_replace(' |##| ', ',', $fieldValue);
+                }
+
+                if ($type === 'double' || $type === 'currency') {
+                    $fieldValue = round((float)$fieldValue, 2);
+                }
+
+                if ($type === 'boolean') {
+                    $fieldValue = ((int)$fieldValue === 1) ? "Yes" : "No";
+                }
+
+                if ($type === 'integer' && $module === 'Documents' && $fieldName === 'filesize') {
+                    $fieldValue = round(((float)$fieldValue / 1024), 2) . 'KB';
+                }
+
+                if ($type === 'string' && $module === 'Documents' && $fieldName === 'filelocationtype') {
+                    if ($fieldValue === "I") $fieldValue = "Internal";
+                    if ($fieldValue === "E") $fieldValue = "External";
+                }
+
+                if ($type === 'text') {
+                    $fieldValue = strip_tags($fieldValue);
+                    $fieldValue = preg_replace('/<br(\s+)?\/?>/i', "\n", $fieldValue);
+                }
+
+                if ($type === 'file' && $module === 'Documents' && $fieldName === 'filename') {
+                    $docExists = !empty($fieldValue);
+                }
+
+                // Always sanitize
+                if ($fieldName !== 'id') {
+                    $fieldValue = strip_tags((string)$fieldValue);
+                }
+
+                // Assign transformed value under label
+                $row[$label] = $fieldValue;
+
+                // Remove original field key
+                if ($fieldName !== 'id') {
+                    unset($row[$fieldName]);
+                }
+
+                if ($isExport) {
+                    unset($row['id']);
+                }
+            }
+
+            // Add documentExists flag
+            if ($module === 'Documents') {
+                $row['documentExists'] = $docExists;
+            }
+
+            $records[$rowIndex] = $row;
+        }
+
+        // Final output
+        $result['headers']     = $headerNames;
+        $result['records']     = $records;
+        $result['editLabels']  = $editFieldNames;
+        $result['pageLimit']   = 10;
+
+        return $result;
+    }
+
+
+    public function convertElapsedTime($value, $currentDate) {
+
+        if ($value === '0000-00-00 00:00:00') {
+            return '';
+        }
+
+        $minutes = (strtotime($currentDate) - strtotime($value)) / 60;
+        if (!is_numeric($minutes)) {
+            return '';
+        }
+
+        $seconds = $minutes * 60;
+
+        $s  = (floor($seconds % 60) > 0) ? (floor($seconds % 60) . ' seconds ') : '';
+        $m  = (floor(($seconds % 3600) / 60) > 0) ? (floor(($seconds % 3600) / 60) . ' minutes ') : '';
+        $h  = (floor(($seconds % 86400) / 3600) > 0) ? (floor(($seconds % 86400) / 3600) . ' hours ') : '';
+        $d  = (floor(($seconds % 2592000) / 86400) > 0) ? (floor(($seconds % 2592000) / 86400) . ' days ') : '';
+        $Mo = (floor($seconds / 2592000) > 0) ? (floor($seconds / 2592000) . ' months ') : '';
+
+        return trim("$Mo $d $h $m $s");
+    }
 }

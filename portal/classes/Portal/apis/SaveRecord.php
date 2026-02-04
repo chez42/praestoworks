@@ -20,7 +20,7 @@ class Portal_SaveRecord_API extends Portal_Default_API {
 		if ($module == 'Accounts') {
 			$recordId = Portal_Session::get('parent_id');
 		}
-		// $requestParams['assigned_user_id'] = Portal_Session::get('assigned_user_id');
+		//$requestParams['assigned_user_id'] = Portal_Session::get('assigned_user_id');
 		$result = Vtiger_Connector::getInstance()->saveRecord($module, $requestParams, $recordId);
 		$response = new Portal_Response();
 		$response->setResult($result);

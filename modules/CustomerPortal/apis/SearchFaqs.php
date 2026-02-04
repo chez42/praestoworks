@@ -21,7 +21,7 @@ class CustomerPortal_SearchFaqs extends CustomerPortal_API_Abstract {
 				throw new Exception($module." not accessible", 1412);
 				exit;
 			}
-
+			/*
 			$searchKey = $request->get('searchKey');
 			$searchKey = decode_html(htmlspecialchars_decode($searchKey));
 			$searchKey = addslashes(addslashes($searchKey));
@@ -31,6 +31,27 @@ class CustomerPortal_SearchFaqs extends CustomerPortal_API_Abstract {
 			$sql.= implode(" LIKE '%$searchKey%' OR ", $searchFields);
 			$sql.= " LIKE '%".$searchKey."%') ;";
 			$sqlResult = $adb->pquery($sql, array("Published"));
+			*/
+			$searchKey = trim($request->get('searchKey'));
+			$searchKey = decode_html(htmlspecialchars_decode($searchKey));
+			$searchKey = addslashes($searchKey);
+
+			$searchFields = ['question', 'answer'];
+			$conditions = [];
+
+			foreach ($searchFields as $field) {
+			    $conditions[] = "$field LIKE '%$searchKey%'";
+			}
+
+			$sql = "SELECT id, question, answer, status
+			        FROM vtiger_faq
+			        WHERE status = ?";
+
+			if ($searchKey !== '') {
+			    $sql .= " AND (" . implode(' OR ', $conditions) . ")";
+			}
+
+			$sqlResult = $adb->pquery($sql, ['Published']);
 			$num_rows = $adb->num_rows($sqlResult);
 			$data = array();
 			for ($i = 0; $i < $num_rows; $i++) {

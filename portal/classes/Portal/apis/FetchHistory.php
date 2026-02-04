@@ -10,163 +10,176 @@
 
 class Portal_FetchHistory_API extends Portal_Default_API {
 
-	public function process(Portal_Request $request) {
-		$module = $request->getModule();
-		$pageNo = $request->get('page');
-		$language = $request->getLanguage();
-		$pageLimit = $request->get('pageLimit');
-		$parentId = $request->get('parentId');
-		if ($parentId !== '') {
-			$parent = $parentId;
-		}
-		if (empty($pageNo)) {
-			$pageNo = 0;
-		}
-		if (empty($pageLimit)) {
-			$pageLimit = 10;
-		}
-		$result = Vtiger_Connector::getInstance()->fetchHistory($module, $request->get('id'), $pageNo, $pageLimit, $parent);
-		$response = new Portal_Response();
-		$response->setResult($this->processHistoryResponse($result, $module, $language));
+    public function process(Portal_Request $request) {
 
-		return $response;
-	}
+        $module    = $request->getModule();
+        $pageNo    = $request->get('page') ?? 0;
+        $language  = $request->getLanguage();
+        $pageLimit = $request->get('pageLimit') ?? 10;
 
-	public function processHistoryResponse($result, $module, $language) {
-		$recordMeta = parent::processResponse($module, $language);
-		if (!empty($result['history'])) {
-			$history = array();
-			foreach ($result['history'] as $key => $valueArray) {
-				$status = $valueArray['status'];
-				if ($valueArray['values']) {
-					$new = array();
-					$new['modifiedtime'] = $valueArray['modifiedtime'];
-					foreach ($valueArray['values'] as $fieldname => $values) {
-						if ($recordMeta[$fieldname]['type'] == 'picklist') {
-							foreach ($recordMeta[$fieldname]['picklistValues'] as $labelValue => $label) {
-								if (!empty($values['previous']) && $values['previous'] == $label['value']) {
-									$values['previous'] = $label['label'];
-								}
-								if (!empty($values['current']) && $values['current'] == $label['value']) {
-									$values['current'] = $label['label'];
-								}
-							}
-						}
-						if ($recordMeta[$fieldname]['type'] == 'multipicklist') {
-							if (!empty($values['previous'])) {
-								$values['previous'] = str_replace(' |##| ', ',', $values['previous']);
-							}
-							if ($values['previous'] == 0) {
-								$values['previous'] = '';
-							}
-							if (!empty($values['current'])) {
-								$values['current'] = str_replace(' |##| ', ',', $values['current']);
-							}
-						}
-						if ($recordMeta[$fieldname]['type'] == 'text' || $recordMeta[$fieldname]['type'] == 'string') {
-							if (!empty($values['previous'])) {
-								if ($values['previous'] == 0) {
-									$values['previous'] = '';
-								}
-							}
-						}
+        $parentId  = $request->get('parentId') ?? '';
+        $recordId  = $request->get('id');
 
-						if ($recordMeta[$fieldname]['type'] == 'date') {
-							if ($values['current'] == '') {
-								$values['previous'] = '';
-							}
-						}
+        $result = Vtiger_Connector::getInstance()->fetchHistory(
+            $module,
+            $recordId,
+            $pageNo,
+            $pageLimit,
+            $parentId
+        );
 
-						if ($recordMeta[$fieldname]['type'] == 'url') {
-							if (!empty($values['previous'])) {
-								if ($values['previous'] == 0) {
-									$values['previous'] = '';
-								}
-							}
-						}
+        $response = new Portal_Response();
+        $response->setResult(
+            $this->processHistoryResponse($result, $module, $language)
+        );
 
-						if ($recordMeta[$fieldname]['type'] == 'time') {
-							if ($values['current'] == '') {
-								$values['previous'] = '';
-							}
-						}
+        return $response;
+    }
 
-						if ($recordMeta[$fieldname]['type'] == 'phone') {
-							if ($values['current'] == '') {
-								$values['previous'] = '';
-							}
-						}
 
-						if ($recordMeta[$fieldname]['type'] == 'email') {
-							if (!empty($values['previous'])) {
-								if ($values['previous'] == 0) {
-									$values['previous'] = '';
-								}
-							}
-						}
+    public function processHistoryResponse($result, $module, $language) {
 
-						if ($recordMeta[$fieldname]['type'] == 'double' || $recordMeta[$fieldname]['type'] == 'currency') {
-							if (!empty($values['previous'])) {
-								$values['previous'] = round($values['previous'], 2);
-							}
-							if (!empty($values['current'])) {
-								$values['current'] = round($values['current'], 2);
-							}
-						}
-						if ($recordMeta[$fieldname]['type'] == 'boolean') {
-							if ($values['previous'] !== '') {
-								$values['previous'] = $values['previous'] == 0 ? 'No' : 'Yes';
-							}
-							if ($values['current'] !== '') {
-								$values['current'] = $values['current'] == 1 ? 'Yes' : 'No';
-							}
-						}
+        $recordMeta = parent::processResponse($module, $language);
 
-						if ($recordMeta[$fieldname]['type'] == 'reference') {
-							if ($values['previous'] !== '') {
-								if ($values['previous'] == 0) {
-									$values['previous'] = '';
-								} else {
-									$values['previous'] = $values['previous'];
-								}
-							}
-							if ($values['current'] !== '') {
-								$values['current'] = $values['current'];
-							}
-						}
+        // Always initialize history
+        $history = [
+            'records' => []
+        ];
 
-						if ($recordMeta[$fieldname]['type'] == 'text') {
-							$values['previous'] = str_replace("\n", '', $values['previous']);
-							$values['current'] = str_replace("\n", '', $values['current']);
-							$values['previous'] = preg_replace('/<br(\s+)?\/?>/i', "\n", $values['previous']);
-							$values['current'] = preg_replace('/<br(\s+)?\/?>/i', "\n", $values['current']);
-							$values['previous'] = strip_tags($values['previous']);
-							$values['current'] = strip_tags($values['current']);
-						}
+        if (empty($result['history']) || !is_array($result['history'])) {
+            return $history;
+        }
 
-						$fieldname = $recordMeta[$fieldname]['label'];
-						foreach ($values as $k => $val) {
-							if ($status == 'updated') {
-								$createCount = count($valueArray['values']);
-								$new[$fieldname]['updateStatus'] = $status;
-								$new[$fieldname][$k] = html_entity_decode((html_entity_decode($values[$k], ENT_QUOTES, 'utf-8')));
-							} elseif ($status == 'created') {
-								$new['id']['updateStatus'] = $status;
-								$updateCount = count($valueArray['values']);
-								$new['created']['user'] = $valueArray['modifieduser']['label'];
-								$history['records'][] = $new;
-								break;
-							}
-						}
-						$new['count'] = $createCount + $updateCount;
-					}
-				}
-				$history['records'][] = $new;
-				$history['records']['count'] = $new['count'];
-			}
-		}
+        foreach ($result['history'] as $entry) {
 
-		return $history;
-	}
+            $status      = $entry['status'] ?? '';
+            $valuesArray = $entry['values'] ?? [];
+            $modified    = $entry['modifiedtime'] ?? '';
 
+            if (empty($valuesArray)) {
+                continue;
+            }
+
+            $new = [
+                'modifiedtime' => $modified
+            ];
+
+            $createCount = 0;
+            $updateCount = 0;
+
+            foreach ($valuesArray as $fieldname => $values) {
+
+                // Safe metadata lookup
+                $meta  = $recordMeta[$fieldname] ?? null;
+                $type  = $meta['type']  ?? null;
+                $label = $meta['label'] ?? $fieldname;
+
+                // Normalize values
+                $prev = $values['previous'] ?? '';
+                $curr = $values['current'] ?? '';
+
+                // Type-based transformations
+
+                if ($type === 'picklist' && !empty($meta['picklistValues'])) {
+                    foreach ($meta['picklistValues'] as $opt) {
+                        if ($prev !== '' && $prev == $opt['value']) {
+                            $prev = $opt['label'];
+                        }
+                        if ($curr !== '' && $curr == $opt['value']) {
+                            $curr = $opt['label'];
+                        }
+                    }
+                }
+
+                if ($type === 'multipicklist') {
+                    if ($prev !== '') {
+                        $prev = str_replace(' |##| ', ',', $prev);
+                        if ($prev == 0) $prev = '';
+                    }
+                    if ($curr !== '') {
+                        $curr = str_replace(' |##| ', ',', $curr);
+                    }
+                }
+
+                if ($type === 'text' || $type === 'string') {
+                    if ($prev !== '' && $prev == 0) $prev = '';
+                }
+
+                if ($type === 'date' && $curr === '') {
+                    $prev = '';
+                }
+
+                if ($type === 'url' && $prev !== '' && $prev == 0) {
+                    $prev = '';
+                }
+
+                if ($type === 'time' && $curr === '') {
+                    $prev = '';
+                }
+
+                if ($type === 'phone' && $curr === '') {
+                    $prev = '';
+                }
+
+                if ($type === 'email' && $prev !== '' && $prev == 0) {
+                    $prev = '';
+                }
+
+                if ($type === 'double' || $type === 'currency') {
+                    if ($prev !== '' && is_numeric($prev)) {
+                        $prev = round((float)$prev, 2);
+                    }
+                    if ($curr !== '' && is_numeric($curr)) {
+                        $curr = round((float)$curr, 2);
+                    }
+                }
+
+                if ($type === 'boolean') {
+                    if ($prev !== '') {
+                        $prev = ((int)$prev === 0) ? 'No' : 'Yes';
+                    }
+                    if ($curr !== '') {
+                        $curr = ((int)$curr === 1) ? 'Yes' : 'No';
+                    }
+                }
+
+                if ($type === 'reference') {
+                    if ($prev !== '' && $prev == 0) {
+                        $prev = '';
+                    }
+                }
+
+                if ($type === 'text') {
+                    $prev = str_replace("\n", '', $prev);
+                    $curr = str_replace("\n", '', $curr);
+                    $prev = preg_replace('/<br(\s+)?\/?>/i', "\n", $prev);
+                    $curr = preg_replace('/<br(\s+)?\/?>/i', "\n", $curr);
+                    $prev = strip_tags($prev);
+                    $curr = strip_tags($curr);
+                }
+
+                // Build history entry
+                if ($status === 'updated') {
+                    $updateCount = count($valuesArray);
+                    $new[$label]['updateStatus'] = 'updated';
+                    $new[$label]['previous'] = html_entity_decode($prev, ENT_QUOTES, 'utf-8');
+                    $new[$label]['current']  = html_entity_decode($curr, ENT_QUOTES, 'utf-8');
+                }
+
+                if ($status === 'created') {
+                    $createCount = count($valuesArray);
+                    $new['id']['updateStatus'] = 'created';
+                    $new['created']['user'] = $entry['modifieduser']['label'] ?? '';
+                    $history['records'][] = $new;
+                    continue 2; // skip remaining fields for created
+                }
+            }
+
+            $new['count'] = $createCount + $updateCount;
+            $history['records'][] = $new;
+            $history['records']['count'] = $new['count'];
+        }
+
+        return $history;
+    }
 }
