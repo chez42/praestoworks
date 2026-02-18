@@ -92,12 +92,20 @@ class Oauth2_Usercallback_Callbacks
             $payload  = $parsed_url['host'] . "||" . $current_user->id . "||" . $req['authfor'] . "||" . $req['authservice'];
             $state = base64_encode($payload);
 
-            // Always force consent to ensure we get a refresh_token and avoid interaction_required errors
-            $authurl = $provider->getAuthorizationUrl([
+            $authParams = [
                 'access_type' => 'offline',
                 'state' => $state,
-                'prompt' => 'consent' // Forces consent screen, yields refresh_token
-            ]);
+            ];
+            // For Office365, select_account is enough to avoid repetitive consent prompts
+            // while still allowing account selection if multiple accounts are logged in.
+            if ($authsvc === 'Office365') {
+                $authParams['prompt'] = 'select_account';
+            } else {
+                // Retain existing behavior for Google and other services
+                $authParams['prompt'] = 'consent';
+            }
+
+            $authurl = $provider->getAuthorizationUrl($authParams);
 
             /* this will force login each-time so refresh-token is obtained */
             $_SESSION['oauth2state'] = $provider->getState();
