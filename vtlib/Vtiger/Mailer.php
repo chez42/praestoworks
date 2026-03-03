@@ -256,7 +256,7 @@ class Vtiger_Mailer extends \PHPMailer\PHPMailer\PHPMailer {
 				'Content-Type: application/json',
 			]);
 			curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-			
+			curl_setopt($ch, CURLOPT_TIMEOUT, 15);
 			
 			curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 			curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($emailData));
@@ -269,12 +269,88 @@ class Vtiger_Mailer extends \PHPMailer\PHPMailer\PHPMailer {
 			
 			curl_close($ch);
 			
-			if($httpCode == 202){
-				return true;
+            if($httpCode == 202){
+                return true;
+            }
+
+			// If unauthorized, attempt to refresh the token
+			if ($httpCode == 401 && stripos($response, 'InvalidAuthenticationToken') !== false) {
+			    require_once 'modules/Oauth2/Config.php';
+			    $cfgfile = "oauth2callback/config.oauth2.php";
+			    if (file_exists($cfgfile)) {
+			        $cfgdata = require_once $cfgfile;
+			        $config = Oauth2_Config::loadConfig($cfgdata);
+			        $cfg = $config->getProviderConfig('Office365');
+			        
+			        // Manual token refresh via CURL
+			        $tokens = json_decode($this->Password, true);
+			        $tokenUrl = 'https://login.microsoftonline.com/common/oauth2/v2.0/token';
+			        $postFields = http_build_query([
+			            'client_id' => $cfg['clientId'],
+			            'client_secret' => $cfg['clientSecret'],
+			            'refresh_token' => $tokens['refresh_token'],
+			            'grant_type' => 'refresh_token'
+			        ]);
+			        
+			        $chToken = curl_init($tokenUrl);
+			        curl_setopt($chToken, CURLOPT_POST, true);
+			        curl_setopt($chToken, CURLOPT_POSTFIELDS, $postFields);
+			        curl_setopt($chToken, CURLOPT_RETURNTRANSFER, true);
+			        curl_setopt($chToken, CURLOPT_TIMEOUT, 15);
+			        curl_setopt($chToken, CURLOPT_HTTPHEADER, ['Content-Type: application/x-www-form-urlencoded']);
+			        $tokenResponse = curl_exec($chToken);
+			        $tokenHttpCode = curl_getinfo($chToken, CURLINFO_HTTP_CODE);
+			        curl_close($chToken);
+			        
+			        if ($tokenHttpCode == 200) {
+			            $newTokensDecoded = json_decode($tokenResponse, true);
+			            if (isset($newTokensDecoded['access_token'])) {
+			                // Keep the old refresh_token if a new one isn't provided
+			                $newRefreshToken = isset($newTokensDecoded['refresh_token']) ? $newTokensDecoded['refresh_token'] : $tokens['refresh_token'];
+			                
+			                $updatedTokensArr = [
+			                    'access_token' => $newTokensDecoded['access_token'],
+			                    'refresh_token' => $newRefreshToken
+			                ];
+			                
+			                // Update vtiger_systems db
+			                global $adb;
+			                $newExpiresOn = time() + $newTokensDecoded['expires_in'];
+                            $newPassword = Vtiger_Functions::toProtectedText(json_encode($updatedTokensArr));
+                            $adb->pquery(
+                                "UPDATE vtiger_systems SET password=?, auth_expireson=? WHERE server_type=? AND smtp_auth_type=?",
+                                array($newPassword, $newExpiresOn, 'email', 'XOAUTH2')
+                            );
+                            
+			                // Retry sending message
+        			        $ch = curl_init($url);
+        			        curl_setopt($ch, CURLOPT_POST, true);
+                			curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                				'Authorization: Bearer ' . $updatedTokensArr['access_token'],
+                				'Content-Type: application/json',
+                			]);
+                			curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+                			curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+                			curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                			curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($emailData));
+                			
+                			$response = curl_exec($ch);
+                			$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                			curl_close($ch);
+                			
+                			if($httpCode == 202){
+                				return true;
+                			}
+			            }
+			        } else {
+                        $this->ErrorInfo = "Office365 Graph API Token Refresh Error (HTTP $tokenHttpCode): " . $tokenResponse . " / CURL Error: " . $error;
+                        return false;
+			        }
+			    }
 			}
-			
-			
-            return $response;
+
+			$this->ErrorInfo = "Office365 Graph API Error (HTTP $httpCode): " . $response;
+            return false;
 			
 		} else {
 		

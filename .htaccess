@@ -5,4 +5,4 @@ RewriteRule .* - [E=HTTP_AUTHORIZATION:%1]
 
 # use the below for php error logging - log_errors On or Off Jim D.
 php_flag log_errors On
-php_value error_log /var/www/sites/logs/praesto-php-errors.log
+php_value error_log /var/www/sites/logs/praestotest-php-errors.log
