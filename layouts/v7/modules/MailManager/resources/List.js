@@ -1376,7 +1376,18 @@ Vtiger_List_Js("MailManager_List_Js", {}, {
 		app.helper.showProgress(app.vtranslate('JSLBL_Loading')+'...');
 		app.request.post({data : params}).then(function(err, data) {
 			app.helper.hideProgress();
-			app.helper.showModal(data);
+			//app.helper.showModal(data);
+			
+			var callbackFunction = function(data) {
+				if(jQuery('.calendarQuickCreateContent').height() > 300){
+					app.helper.showVerticalScroll(jQuery('.calendarQuickCreateContent'), {
+						setHeight: '300px',
+						autoHideScrollbar: false,
+					});
+				}
+			}
+			app.helper.showModal(data,{"cb":callbackFunction});
+			
 			var form = jQuery('form[name="QuickCreate"]');
 			app.event.trigger('post.QuickCreateForm.show',form);
 			vtUtils.applyFieldElementsView(form);

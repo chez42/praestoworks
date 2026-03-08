@@ -359,7 +359,6 @@ class Users extends CRMEntity {
 				$ok = ($dbuser_password == $encrypted_password);
 			}
 		}
-		return true;
 		return $ok;
 	}
 

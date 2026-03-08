@@ -411,7 +411,7 @@ class MailManager_Office365Message_Model extends Vtiger_MailRecord {
         // Load all inline attachments (cid IS NOT NULL) for this email
         $result = $db->pquery(
             "SELECT attachid, aname, path, cid FROM vtiger_mailmanager_mailattachments 
-             WHERE userid=? AND muid=? AND cid IS NOT NULL",
+             WHERE userid=? AND BINARY muid=? AND cid IS NOT NULL",
             array($currentUserModel->getId(), $this->muid())
         );
         
@@ -571,7 +571,7 @@ class MailManager_Office365Message_Model extends Vtiger_MailRecord {
 
 
         $result = $db->pquery(
-            "SELECT * FROM vtiger_mailmanager_mailrecord WHERE userid=? AND muid=?",
+            "SELECT * FROM vtiger_mailmanager_mailrecord WHERE userid=? AND BINARY muid=?",
             array($currentUserModel->getId(), $mailRecordId)
         );
         if ($db->num_rows($result)) {
