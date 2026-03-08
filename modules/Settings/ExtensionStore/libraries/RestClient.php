@@ -53,10 +53,15 @@ class Settings_ExtensionStore_RestClient {
 		// To be secure - we don't want user to override this
 		// and open doors for hackers.
 		$cookiefile = tempnam(sys_get_temp_dir(), ".".uniqid()."co");
-		$cookiefp = fopen($cookiefile, "w");
+		if (empty($cookiefile)) {
+			$cookiefile = sys_get_temp_dir() . DIRECTORY_SEPARATOR . "." . uniqid() . "co";
+		}
+		$cookiefp = @fopen($cookiefile, "w");
 
-		curl_setopt($curl, CURLOPT_COOKIEJAR, $cookiefile);
-		curl_setopt($curl, CURLOPT_COOKIEFILE, $cookiefile);
+		if ($cookiefp) {
+			curl_setopt($curl, CURLOPT_COOKIEJAR, $cookiefile);
+			curl_setopt($curl, CURLOPT_COOKIEFILE, $cookiefile);
+		}
 
 		// Now execute
 		$response = curl_exec($curl);
@@ -69,8 +74,12 @@ class Settings_ExtensionStore_RestClient {
 		}
 		curl_close($curl);
 
-		fclose($cookiefp);
-		unlink($cookiefile);
+		if ($cookiefp) {
+			fclose($cookiefp);
+		}
+		if (!empty($cookiefile) && file_exists($cookiefile)) {
+			unlink($cookiefile);
+		}
 
 		return $responseData;
 	}
