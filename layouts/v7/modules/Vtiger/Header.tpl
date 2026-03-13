@@ -10,7 +10,8 @@
 <!DOCTYPE html>
 <html>
 	<head>
-		<title>{if $PAGETITLE}{vtranslate($PAGETITLE, $QUALIFIED_MODULE)} - {/if}LunaCRM</title>
+		{assign var=TITLE_PREFIX value=vtranslate($PAGETITLE, $QUALIFIED_MODULE)}
+		<title>{if $TITLE_PREFIX && $TITLE_PREFIX neq 'LunaCRM'}{$TITLE_PREFIX} - {/if}LunaCRM</title>
         <link rel="SHORTCUT ICON" href="layouts/v7/skins/images/favicon-32x32.png">
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
