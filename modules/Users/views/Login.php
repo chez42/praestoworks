@@ -103,7 +103,7 @@ class Users_Login_View extends Vtiger_View_Controller {
 
 	function getPageTitle(Vtiger_Request $request) {
 		$companyDetails = Vtiger_CompanyDetails_Model::getInstanceById();
-		return $companyDetails->get('organizationname');
+		return 'LunaCRM';
 	}
 
 	function getHeaderScripts(Vtiger_Request $request){

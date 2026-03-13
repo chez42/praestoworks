@@ -102,7 +102,7 @@
 		
 		<div style="position: absolute; bottom: 10px; width: 100%; text-align: center;">
 			<div class="footer-links">
-				<p>&copy; {$smarty.now|date_format:"%Y"} Praesto. All rights reserved.</p>
+				<p>&copy; {$smarty.now|date_format:"%Y"} LunaCRM. All rights reserved.</p>
 			</div>
 		</div>
 	</div>
