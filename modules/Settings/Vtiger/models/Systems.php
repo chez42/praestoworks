@@ -46,7 +46,18 @@ class Settings_Vtiger_Systems_Model extends Vtiger_Base_Model{
             $query = 'INSERT INTO '.self::tableName.'(id,server,server_port,server_username,server_password,server_type,smtp_auth,server_path,from_email_field) VALUES(?,?,?,?,?,?,?,?,?)';
         }else{
             $query = 'UPDATE '.self::tableName.' SET server = ?, server_port= ?, server_username = ?, server_password = ?,
-                server_type = ?,  smtp_auth= ?, server_path = ?, from_email_field=? WHERE id = ?';
+                server_type = ?,  smtp_auth= ?, server_path = ?, from_email_field=? ';
+            
+            if ($this->get('smtp_auth_type')) {
+                $query .= ', smtp_auth_type = ?';
+                $params[] = $this->get('smtp_auth_type');
+            }
+            if ($this->get('smtp_auth_expireson')) {
+                $query .= ', smtp_auth_expireson = ?';
+                $params[] = $this->get('smtp_auth_expireson');
+            }
+
+            $query .= ' WHERE id = ?';
             $params[] = $id;
         }
         $db->pquery($query,$params);
@@ -61,7 +72,7 @@ class Settings_Vtiger_Systems_Model extends Vtiger_Base_Model{
         try{
         $modelClassName = Vtiger_Loader::getComponentClassName('Model', $componentName, 'Settings:Vtiger');
         }catch(Exception $e) {
-            $modelClassName = self;
+            $modelClassName = __CLASS__;
         }
         $instance = new $modelClassName();
         if($db->num_rows($result) > 0 ){

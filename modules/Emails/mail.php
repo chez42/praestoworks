@@ -71,7 +71,7 @@ function send_mail($module,$to_email,$from_name,$from_email,$subject,$contents,$
 			$contents = addSignature($contents,$from_name,$from_email);
 		}
 	}
-	$mail = new PHPMailer\PHPMailer\PHPMailer();
+	$mail = Emails_Mailer_Model::getInstance();
 
 	setMailerProperties($mail,$subject,$contents,$from_email,$from_name,trim($to_email,","),$attachment,$emailid,$module,$logo);
 	setCCAddress($mail,'cc',$cc);
@@ -204,6 +204,10 @@ function setMailerProperties($mail,$subject,$contents,$from_email,$from_name,$to
 	$mail->AltBody = $plainBody;
 
 	$mail->IsSMTP();		//set mailer to use SMTP
+$mail->SMTPDebug = 2;
+$mail->Debugoutput = function($str, $level) {
+    error_log("SMTP[$level]: $str");
+};
 	//$mail->Host = "smtp1.example.com;smtp2.example.com";  // specify main and backup server
 
 	setMailServerProperties($mail);
@@ -352,8 +356,12 @@ function setMailServerProperties($mail)
 		$tokens = json_decode($mail->Password, true);
 		$mail->setOAuth(new PHPMailerXOAuth2TokenProvider($mail->Username, $tokens["access_token"]));
 
-		$mail->Username = '';
-		$mail->Password = '';
+		// For Office365, we must NOT clear the password (JSON token) because Vtiger_Mailer::Send() 
+		// needs it to perform the Graph API call if SMTP fails or is bypassed.
+		if (stripos($mail->Host, 'office365') === false && stripos($mail->Host, 'outlook') === false) {
+			$mail->Username = '';
+			$mail->Password = '';
+		}
 	}
 
 

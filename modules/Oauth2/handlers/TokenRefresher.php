@@ -66,13 +66,13 @@ class Oauth2_TokenRefresher_Handler
                     $newpassword = Vtiger_Functions::toProtectedText(json_encode($tokens));
 
                     $db->pquery(
-                        "UPDATE vtiger_systems SET password=?, auth_expireson=? WHERE id=?",
+                        "UPDATE vtiger_systems SET server_password=?, smtp_auth_expireson=? WHERE id=?",
                         array($newpassword, $newexpireson, $record['id'])
                     );
 
                     echo sprintf("Updated Token for OutgoingServer #%d [%s]\n", $record["id"], $record["server_username"]);
                 } catch (Exception $e) {
-                    echo sprintf("Failed to get access token for OutgoingServer #%d [%s]\n", $record["scannerid"], $record["server_username"]);
+                    echo sprintf("Failed to get access token for OutgoingServer #%d [%s]\n", $record["id"], $record["server_username"]);
                     echo $e->getMessage() . "\n";
                 }
             }

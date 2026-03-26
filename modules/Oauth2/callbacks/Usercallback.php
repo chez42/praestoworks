@@ -99,7 +99,7 @@ class Oauth2_Usercallback_Callbacks
             // For Office365, select_account is enough to avoid repetitive consent prompts
             // while still allowing account selection if multiple accounts are logged in.
             if ($authsvc === 'Office365') {
-                $authParams['prompt'] = 'select_account';
+                $authParams['prompt'] = 'consent';
             } else {
                 // Retain existing behavior for Google and other services
                 $authParams['prompt'] = 'consent';
@@ -146,7 +146,7 @@ class Oauth2_Usercallback_Callbacks
 
                 if (($oauth2for == 'OutgoingServer' || $oauth2for == 'MailConverter' || $oauth2for == 'MailManager') && $oauth2svc == 'Office365') {
 
-                    $userinfo["email"] = $userinfo['mail'];
+                    $userinfo["email"] = $userinfo['mail'] ? $userinfo['mail'] : $userinfo['userPrincipalName'];
 
                     if ($userinfo["email"]) {
                         $tokens = array("access_token" => $accessTokenValue, "refresh_token" => $refreshTokenValue);
@@ -218,7 +218,8 @@ class Oauth2_Usercallback_Callbacks
             }
 
             if ($db->num_rows($checkRs)) {
-                $db->pquery(
+                // update
+                    $db->pquery(
                     "update vtiger_systems set server = ?, server_port = ?, server_username = ?, server_password = ?, smtp_auth = ?, smtp_auth_type = ?, smtp_auth_expireson = ? where server_type = ?",
                     array(
                         $server,
@@ -246,7 +247,7 @@ class Oauth2_Usercallback_Callbacks
                         "email"
                     )
                 );
-            }
+            } return true;
         } else if ($oauth2for == "MailConverter") {
             require_once "modules/Settings/MailConverter/handlers/MailScannerInfo.php";
 
@@ -267,7 +268,7 @@ class Oauth2_Usercallback_Callbacks
             $scanner->isvalid = 1;
 
             $oldscanner = new Vtiger_MailScannerInfo($scanner->scannername, true);
-            $oldscanner->update($scanner);
+            $oldscanner->update($scanner); return $scanner;
         } else if ($oauth2for == "MailManager") {
 
             require_once "modules/MailManager/models/Mailbox.php";
@@ -298,7 +299,7 @@ class Oauth2_Usercallback_Callbacks
 				
                 if ($proxy) $mailbox->setMailProxy($proxy);
                 $mailbox->save();
-            }
+             } return true;
         }
     }
 }

@@ -739,6 +739,12 @@ class Vtiger_Functions {
 
     static function getMergedDescription($description, $id, $parent_type, $removeTags = false) {
 		global $current_user;
+		if (empty($current_user)) {
+			$current_user = Users::getActiveAdminUser();
+		}
+		if (empty($current_user)) {
+			return $description;
+		}
 		$token_data_pair = explode('$', $description);
 		$emailTemplate = new EmailTemplate($parent_type, $description, $id, $current_user);
 		$emailTemplate->removeTags = $removeTags;

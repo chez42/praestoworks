@@ -59,11 +59,11 @@ class Oauth2_Config implements ArrayAccess {
                 if (!isset($config["scopes"])) {
 					
 					if(isset($_REQUEST['authfor']) && ($_REQUEST['authfor'] == 'MailConverter' || $_REQUEST['authfor'] == 'MailManager')){
-						$config["scopes"] = 'offline_access User.Read Mail.Send Mail.ReadWrite'; /* space separated */
+						$config["scopes"] = 'offline_access User.Read SMTP.Send Mail.ReadWrite'; /* space separated */
                 	} else if(isset($_REQUEST['authfor']) && ($_REQUEST['authfor'] == 'Login')){
 						$config["scopes"] = 'openid email profile'; /* space separated */
                 	} else {
-						$config["scopes"] = 'offline_access User.Read Mail.Send'; /* space separated */
+						$config["scopes"] = 'offline_access User.Read SMTP.Send'; /* space separated */
                 	}
 					
                 }
