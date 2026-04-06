@@ -30,12 +30,26 @@ class Reports_Save_Action extends Vtiger_Save_Action {
 	public function process(Vtiger_Request $request) {
 		$moduleName = $request->getModule();
 
-		$record = $request->get('record');
+/*		$record = $request->get('record');
 		$reportModel = Reports_Record_Model::getCleanInstance();
 		$reportModel->setModule('Reports');
 		if(!empty($record) && !$request->get('isDuplicate')) {
 			$reportModel->setId($record);
 		}
+*/		
+		$recordId = $request->get('record');
+		$isDuplicate = $request->get('isDuplicate');
+
+		// If we have an ID and we are NOT explicitly duplicating, load the existing record
+		if(!empty($recordId) && !($isDuplicate === true || $isDuplicate === 'true')) {
+		    $reportModel = Reports_Record_Model::getInstanceById($recordId);
+		} else {
+		    $reportModel = Reports_Record_Model::getCleanInstance();
+		    if($isDuplicate) {
+		        $reportModel->set('isDuplicate', true);
+		    }
+		}
+		$reportModel->setModule('Reports');
 
 		$reporttype = $request->get('reporttype');
 		if(empty($reporttype)) $reporttype='tabular';

@@ -456,7 +456,7 @@ class Reports_Record_Model extends Vtiger_Record_Model {
 			}
 		}
 
-		if(empty($reportId)) {
+/*		if(empty($reportId)) {
 			$reportId = $db->getUniqueID("vtiger_selectquery");
 			$this->setId($reportId);
 
@@ -487,8 +487,33 @@ class Reports_Record_Model extends Vtiger_Record_Model {
 
 			$this->saveSharingInformation();
 		} else {
+*/
+    
+		    // Check if this is an explicit duplication request
+		    $isDuplicate = $this->get('isDuplicate');
 
-			$reportId = $this->getId();
+		    // Only create a NEW record if the ID is empty OR we are duplicating
+		    if(empty($reportId) || $isDuplicate === true || $isDuplicate === 'true') {
+		        $reportId = $db->getUniqueID("vtiger_selectquery");
+		        $this->setId($reportId);
+        
+		        $db->pquery('INSERT INTO vtiger_selectquery(queryid, startindex, numofobjects) VALUES(?,?,?)', array($reportId, 0, 0));
+        
+		        $reportParams = array($reportId, $this->get('folderid'), $this->get('reportname'), $this->get('description'), $this->get('reporttype', 'tabular'), $reportId, 'CUSTOM', $currentUser->id, $sharingType);
+		        $db->pquery('INSERT INTO vtiger_report(reportid, folderid, reportname, description, reporttype, queryid, state, owner, sharingtype) VALUES(?,?,?,?,?,?,?,?,?)', $reportParams);
+        
+		        $secondaryModule = $this->getSecondaryModules();
+		        $db->pquery('INSERT INTO vtiger_reportmodules(reportmodulesid, primarymodule, secondarymodules) VALUES(?,?,?)', array($reportId, $this->getPrimaryModule(), $secondaryModule));
+        
+		        $this->saveSelectedFields();
+		        $this->saveSortFields();
+		        $this->saveCalculationFields();
+	        	$this->saveStandardFilter();
+	        	$this->saveAdvancedFilters();
+	        	$this->saveReportType();
+	        	$this->saveSharingInformation();
+		    } else {
+		        $reportId = $this->getId();
 			$db->pquery('DELETE FROM vtiger_selectcolumn WHERE queryid = ?', array($reportId));
 			$this->saveSelectedFields();
 
