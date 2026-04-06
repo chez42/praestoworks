@@ -10,6 +10,7 @@
 
 class Settings_Webforms_Record_Model extends Settings_Vtiger_Record_Model {
 
+	protected $module;
 	public $selectedFields;
 	/**
 	 * Function to get Id of this record instance
@@ -162,6 +163,9 @@ class Settings_Webforms_Record_Model extends Settings_Vtiger_Record_Model {
 				$db = PearDatabase::getInstance();
 				$targetModuleModel = Vtiger_Module_Model::getInstance($targetModule);
 				$allFields = $targetModuleModel->getFields();
+				if (!is_array($allFields)) {
+					$allFields = array();
+				}
 
 				$result = $db->pquery("SELECT * FROM vtiger_webforms_field WHERE webformid = ? ORDER BY sequence", array($this->getId()));
 				$numOfRows = $db->num_rows($result);
@@ -215,6 +219,9 @@ class Settings_Webforms_Record_Model extends Settings_Vtiger_Record_Model {
 		$targetModuleModel = Vtiger_Module_Model::getInstance($targetModule);
 		$restrictedFields = array('70','52','4','53');
 		$blocks = $targetModuleModel->getBlocks();
+		if (!is_array($blocks)) {
+			$blocks = array();
+		}
 		foreach ($blocks as $blockLabel => $blockModel) {
 			$fieldModelsList = $blockModel->getFields();
 			$webformFieldList = array();
@@ -300,7 +307,7 @@ class Settings_Webforms_Record_Model extends Settings_Vtiger_Record_Model {
 		foreach ($selectedFieldsData as $fieldName => $fieldDetails) {
 			$params = array($this->getId());
 			$neutralizedField = $fieldName;
-			$fieldDefaultValue = $fieldDetails['defaultvalue'];
+			$fieldDefaultValue = isset($fieldDetails['defaultvalue']) ? $fieldDetails['defaultvalue'] : '';
 
 			$fieldModel = Vtiger_Field_Model::getInstance($fieldName, $sourceModuleModel);
 			$dataType = $fieldModel->getFieldDataType();
@@ -315,29 +322,35 @@ class Settings_Webforms_Record_Model extends Settings_Vtiger_Record_Model {
 				$fieldDefaultValue = implode(" |##| ", $fieldDefaultValue);
 			}
 
+			if ($fieldDefaultValue === null || trim($fieldDefaultValue) === '') {
+				$fieldDefaultValue = '';
+			}
+			file_put_contents('save_debug_5.txt', "FIELD: $fieldName, INIT_VAL: " . (isset($fieldDetails['defaultvalue']) ? var_export($fieldDetails['defaultvalue'], true) : 'NOT_SET') . ", TRIM: " . var_export($fieldDefaultValue, true) . ", DATATYPE: " . $dataType . "\n", FILE_APPEND);
+
 			//Handling Data format
-			if ($dataType === 'date') {
+			if ($dataType === 'date' && $fieldDefaultValue !== null && trim($fieldDefaultValue) !== '') {
 				$fieldDefaultValue = Vtiger_Date_UIType::getDBInsertedValue($fieldDefaultValue);
 			}
 
-			if ($dataType === 'time') {
+			if ($dataType === 'time' && $fieldDefaultValue !== null && trim($fieldDefaultValue) !== '') {
 				$fieldDefaultValue = Vtiger_Time_UIType::getTimeValueWithSeconds($fieldDefaultValue);
 			}
 
-			if ($dataType === 'reference') {
+			if ($dataType === 'reference' && $fieldDefaultValue !== null && trim($fieldDefaultValue) !== '') {
 				$referenceModule = $fieldDetails['referenceModule'];
 				$referenceObject = VtigerWebserviceObject::fromName($db,$referenceModule);
 				$referenceEntityId = $referenceObject->getEntityId();
 				$fieldDefaultValue = $referenceEntityId."x".$fieldDefaultValue;
 			}
 
-			if ($dataType === 'currency' && $fieldDefaultValue != null) {
+			if ($dataType === 'currency' && $fieldDefaultValue !== null && trim($fieldDefaultValue) !== '') {
 				$fieldDefaultValue = CurrencyField::convertToDBFormat($fieldDefaultValue);
 			}
 
-			if ($dataType === 'double') {
+			if ($dataType === 'double' && $fieldDefaultValue !== null && trim($fieldDefaultValue) !== '') {
 				$fieldDefaultValue = CurrencyField::convertToDBFormat($fieldDefaultValue, NULL, true);
 			}
+			$neutralizedField = $fieldModel->get('name');
 			array_push($params, $fieldModel->getId(), $fieldName, $neutralizedField, $fieldDefaultValue, $fieldDetails['required'], $fieldDetails['sequence'], $fieldDetails['hidden']);
 			$db->pquery($fieldInsertQuery, $params);
 		}

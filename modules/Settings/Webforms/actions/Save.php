@@ -58,11 +58,21 @@ class Settings_Webforms_Save_Action extends Settings_Vtiger_Index_Action {
 		$recordModel->set('file_fields', $fileFields);
 
 		$returnUrl = $recordModel->getModule()->getListViewUrl();
-		$recordModel->set('selectedFieldsData', $request->get('selectedFieldsData'));
 		$selectedFieldsData = $request->get('selectedFieldsData');
 		if (empty($selectedFieldsData)) {
 			throw new AppException(vtranslate('LBL_MANDATORY_FIELDS_MISSING', 'Vtiger'));
 		}
+
+		// Ensure override values are populated if missing from selectedFieldsData structure
+		// but present in the raw request for that field. This specifically handles cases where
+		// a user clears an override value, resulting in an empty string that isn't captured by default.
+		foreach($selectedFieldsData as $fieldName => $fieldDetails) {
+			if(!isset($fieldDetails['defaultvalue']) && $request->has($fieldName)) {
+				$selectedFieldsData[$fieldName]['defaultvalue'] = $request->get($fieldName);
+			}
+		}
+		
+		$recordModel->set('selectedFieldsData', $selectedFieldsData);
 		if (!$recordModel->checkDuplicate()) {
 			$recordModel->save();
 			$returnUrl = $recordModel->getDetailViewUrl();
