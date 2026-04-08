@@ -210,7 +210,16 @@ class Vtiger_Request {
 		// Referer check if present - to over come 
 		if (isset($_SERVER['HTTP_REFERER']) && $user) {//Check for user post authentication.
 			global $site_URL;
-			if ((stripos($_SERVER['HTTP_REFERER'], $site_URL) !== 0) && ($this->get('module') != 'Install')) {
+
+			// Whitelist for OAuth flows returning to CRM
+			$isOauthReferer = false;
+			$refererHost = parse_url($_SERVER['HTTP_REFERER'], PHP_URL_HOST);
+			$allowedHosts = array('accounts.google.com', 'login.microsoftonline.com');
+			if (in_array($refererHost, $allowedHosts)) {
+				$isOauthReferer = true;
+			}
+
+			if ((stripos($_SERVER['HTTP_REFERER'], $site_URL) !== 0) && ($this->get('module') != 'Install') && !$isOauthReferer) {
 				throw new Exception('Illegal request');
 			}
 		}

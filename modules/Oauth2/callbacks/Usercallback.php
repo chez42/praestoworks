@@ -184,7 +184,7 @@ class Oauth2_Usercallback_Callbacks
                         header("Location: {$crmBaseUrl}/index.php?parent=Settings&module=MailConverter&view=List");
                         break;
                     case "MailManager":
-                        header("Location: {$crmBaseUrl}/index.php?module=MailManager&view=List");
+                        header("Location: {$crmBaseUrl}/oauth2callback/redirect.php");
                         break;
                 }
             } catch (Exception $e) {
