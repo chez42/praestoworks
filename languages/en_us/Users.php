@@ -199,6 +199,7 @@ $languageStrings = array(
 	'LBL_DELETE_USER_PERMANENTLY_INFO' => 'Deleting a user permanently will transfer all records including comments and history to new user.',
 	'LBL_RESTORE' => 'Restore',
 	'LBL_USER_RESTORED_SUCCESSFULLY' => 'User restored successfully',
+	'LBL_RESET_2FA_SECRET_KEY' => 'Reset 2FA Secret Key',
 	//Login strings
 	'LBL_TO_CRM' => 'Login to Vtiger CRM',
 	'LBL_INVALID_USER_OR_PASSWORD' => 'Invalid username or password.',

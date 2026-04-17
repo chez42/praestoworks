@@ -85,7 +85,7 @@
 					<input type="hidden" name="secret" value="">
 
 					<div class="form-group qr_image hide" style="text-align:center;">
-						<span style="font-size:14px;">Scan with Google Authenticator:</span>
+						<span style="font-size:14px;">Scan QR with Authenticator App:</span>
 						<img src="" alt="" id="qr_image" style="max-width:100%; margin-top:10px;">
 					</div>
 

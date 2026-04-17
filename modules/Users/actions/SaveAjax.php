@@ -21,6 +21,7 @@ class Users_SaveAjax_Action extends Vtiger_SaveAjax_Action {
 		$this->exposeMethod('transferOwner');
 		$this->exposeMethod('changeUsername');
 		$this->exposeMethod('changeAccessKey');
+		$this->exposeMethod('resetSecretKey');
 	}
     
     public function requiresPermission(\Vtiger_Request $request) {
@@ -35,7 +36,7 @@ class Users_SaveAjax_Action extends Vtiger_SaveAjax_Action {
 			$mode = $request->getMode();
 			if($mode == 'savePassword' && (isset($userId) && $currentUserModel->getId() != $userId)) {
 				throw new AppException(vtranslate('LBL_PERMISSION_DENIED', 'Vtiger'));
-			} else if(in_array($mode, array('userExists','restoreUser','transferOwner','changeUsername'))) {
+			} else if(in_array($mode, array('userExists','restoreUser','transferOwner','changeUsername','resetSecretKey'))) {
 				throw new AppException(vtranslate('LBL_PERMISSION_DENIED', 'Vtiger'));
 			} else if($mode != 'savePassword' && ($currentUserModel->getId() != $request->get('record'))) {
 				throw new AppException(vtranslate('LBL_PERMISSION_DENIED', 'Vtiger'));
@@ -319,5 +320,15 @@ class Users_SaveAjax_Action extends Vtiger_SaveAjax_Action {
 			$response->setError($ex->getMessage());
 		}
 		$response->emit();
+	}
+
+	public function resetSecretKey(Vtiger_Request $request) {
+	    $recordId = $request->get('record');
+	    $db = PearDatabase::getInstance();
+	    $db->pquery("UPDATE vtiger_users SET secret_key = ? WHERE id = ?", array('', $recordId));
+
+	    $response = new Vtiger_Response();
+	    $response->setResult(true);
+	    $response->emit();
 	}
 }

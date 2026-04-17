@@ -64,25 +64,35 @@ class Users_DetailView_Model extends Vtiger_DetailView_Model {
 
 			if(Users_Privileges_Model::isPermittedToChangeUsername($recordId)){
 				$detailViewActionLinks[] = array(
-												'linktype' => 'DETAILVIEW',
-												'linklabel' => 'LBL_CHANGE_USERNAME',
-												'linkurl' => "javascript:Users_Detail_Js.triggerChangeUsername('" . $recordModel->getChangeUsernameUrl() . "')",
-												'linkicon' => ''
-											);
+								'linktype' => 'DETAILVIEW',
+								'linklabel' => 'LBL_CHANGE_USERNAME',
+								'linkurl' => "javascript:Users_Detail_Js.triggerChangeUsername('" . $recordModel->getChangeUsernameUrl() . "')",
+								'linkicon' => ''
+								);
 			}
 
 			$detailViewActionLinks[] = array(
-										'linktype' => 'DETAILVIEW',
-										'linklabel' => 'LBL_CHANGE_PASSWORD',
-										'linkurl' => "javascript:Users_Detail_Js.triggerChangePassword('".$recordModel->getChangePwdUrl()."','Users')",
-										'linkicon' => ''
-									);
+							'linktype' => 'DETAILVIEW',
+							'linklabel' => 'LBL_CHANGE_PASSWORD',
+							'linkurl' => "javascript:Users_Detail_Js.triggerChangePassword('".$recordModel->getChangePwdUrl()."','Users')",
+							'linkicon' => ''
+							);
 			$detailViewActionLinks[] = array(
-										'linktype'	=> 'DETAILVIEW',
-										'linklabel' => 'LBL_CHANGE_ACCESS_KEY',
-										'linkurl'	=> "javascript:Users_Detail_Js.triggerChangeAccessKey('index.php?module=Users&action=SaveAjax&mode=changeAccessKey&record=$recordId')",
-										'linkicon'	=> ''
-									);
+							'linktype'	=> 'DETAILVIEW',
+							'linklabel' => 'LBL_CHANGE_ACCESS_KEY',
+							'linkurl'	=> "javascript:Users_Detail_Js.triggerChangeAccessKey('index.php?module=Users&action=SaveAjax&mode=changeAccessKey&record=$recordId')",
+							'linkicon'	=> ''
+							);
+			
+			// Only show the reset option if the current user is an admin
+			if($currentUserModel->isAdminUser()) {
+				$detailViewActionLinks[] = array(
+			        		'linktype'  => 'DETAILVIEW',
+			        		'linklabel' => 'LBL_RESET_2FA_SECRET_KEY',
+			        		'linkurl'   => "javascript:Users_Detail_Js.triggerReset2FA($recordId)",
+			        		'linkicon'  => ''
+				);
+			}
 
 			foreach ($detailViewActionLinks as $detailViewLink) {
 				$linkModelList['DETAILVIEW'][] = Vtiger_Link_Model::getInstanceFromValues($detailViewLink);

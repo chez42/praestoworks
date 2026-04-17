@@ -94,6 +94,31 @@ Vtiger_Detail_Js("Users_Detail_Js",{
 	},
 
 	/*
+	 * function to trigger reset 2FA Secret Key
+	 */
+	triggerReset2FA : function(recordId) {
+		var message = "Are you sure you want to reset the 2FA Secret Key? The user will need to re-scan the QR code at next login.";
+		app.helper.showConfirmationBox({'message' : message}).then(function(e) {
+			app.helper.showProgress(app.vtranslate('JS_PLEASE_WAIT'));
+			var params = {
+				'module' : 'Users',
+				'action' : 'SaveAjax',
+				'mode'   : 'resetSecretKey',
+				'record' : recordId
+			};
+			app.request.post({'data': params}).then(function(err, data) {
+				app.helper.hideProgress();
+				if (err === null) {
+					app.helper.showSuccessNotification({'message': "Secret Key Reset Successfully"});
+					location.reload();
+				} else {
+					app.helper.showErrorNotification({'message': err.message});
+				}
+			});
+		});
+	},
+
+	/*
 	 * function to trigger delete record action
 	 * @params: delete record url.
 	 */
@@ -237,7 +262,8 @@ Vtiger_Detail_Js("Users_Detail_Js",{
 			}
 		});
 	},
-	
+
+
 },{
 	registerAjaxPreSaveEvent: function () {
 		var self = this;
