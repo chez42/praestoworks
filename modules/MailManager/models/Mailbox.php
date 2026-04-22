@@ -129,6 +129,10 @@ class MailManager_Mailbox_Model {
 		return $this->mRefreshTimeOut;
 	}
 
+	public function account_id() {
+		return $this->mId;
+	}
+
     public function setFolder($value) {
 		$this->mFolder = $value;
 	}
@@ -174,12 +178,19 @@ class MailManager_Mailbox_Model {
 	}
 
 	public static function activeInstance($currentUserModel = false) {
+		static $cachedInstance = array();
+		if(!$currentUserModel)
+			$currentUserModel = Users_Record_Model::getCurrentUserModel();
+			
+		$userId = $currentUserModel->getId();
+		if (isset($cachedInstance[$userId])) {
+			return $cachedInstance[$userId];
+		}
+
 		$db = PearDatabase::getInstance();
-        if(!$currentUserModel)
-            $currentUserModel = Users_Record_Model::getCurrentUserModel();
 		$instance = new MailManager_Mailbox_Model();
 
-		$result = $db->pquery("SELECT * FROM vtiger_mail_accounts WHERE user_id=? AND status=1 AND set_default=0", array($currentUserModel->getId()));
+		$result = $db->pquery("SELECT * FROM vtiger_mail_accounts WHERE user_id=? AND status=1 AND set_default=0", array($userId));
 		if ($db->num_rows($result)) {
 			$instance->mServer = trim($db->query_result($result, 0, 'mail_servername'));
 			$instance->mUsername = trim($db->query_result($result, 0, 'mail_username'));
@@ -195,6 +206,8 @@ class MailManager_Mailbox_Model {
             $instance->mFolder = trim($db->query_result($result, 0, 'sent_folder'));
 			$instance->mServerName = self::setServerName($instance->mServer);
 		}
+		
+		$cachedInstance[$userId] = $instance;
 		return $instance;
 	}
 

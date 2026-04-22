@@ -131,9 +131,29 @@ class CustomerPortal_FetchRecords extends CustomerPortal_API_Abstract {
 					$limitClause = sprintf('ORDER BY %s %s LIMIT %s,%s', $orderBy, $order, ($page * $pageLimit), $pageLimit);
 					$result = vtws_query_related($sql, $relatedId, $moduleLabel, $current_user, $limitClause);
 				} else if ($mode == 'all') {
-					if (in_array($module, array('Products', 'Services'))) {
+					if (in_array($module, array('Products', 'Services', 'ProjectTask', 'ProjectMilestone'))) {
 						$countSql = sprintf('SELECT count(*) FROM %s;', $module);
 						$sql = sprintf('SELECT %s FROM %s', $fields, $module);
+
+						if (in_array($module, array('ProjectTask', 'ProjectMilestone'))) {
+							$projectModuleLabel = CustomerPortal_Utils::getRelatedModuleLabel('Project');
+							$relatedProjects = vtws_query_related("SELECT id FROM Project", $contactWebserviceId, $projectModuleLabel, $current_user);
+							$projectIds = array();
+							foreach ($relatedProjects as $project) {
+								$projectIds[] = $project['id'];
+							}
+							if (!empty($projectIds)) {
+								$whereClause = sprintf(" WHERE projectid IN ('%s')", implode("','", $projectIds));
+								$countSql = sprintf('SELECT count(*) FROM %s %s;', $module, $whereClause);
+								$sql .= $whereClause;
+							} else {
+								// No projects, so no tasks
+								$response->setResult(array());
+								$response->addToResult('count', 0);
+								return $response;
+							}
+						}
+
 						$limitClause = sprintf('ORDER BY %s %s LIMIT %s,%s;', $orderBy, $order, ($page * $pageLimit), $pageLimit);
 						$sql = $sql.' '.$limitClause;
 						$result = vtws_query($sql, $current_user);

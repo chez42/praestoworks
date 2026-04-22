@@ -268,6 +268,7 @@ Class Google_Contacts_Connector extends WSAPP_TargetConnector {
 	}
 
 	function fetchContactsFeed($query) {
+		if(!$this->apiConnection || !is_object($this->apiConnection)) return false;
 		if($this->apiConnection->isTokenExpired()) $this->apiConnection->refreshToken();
 		$headers = array(
 			'Authorization' => $this->apiConnection->token['access_token']['token_type'] . ' ' . 
@@ -387,6 +388,7 @@ Class Google_Contacts_Connector extends WSAPP_TargetConnector {
 	 * @return <Mixed>
 	 */
 	protected function sendBatchRequest($batchFeed, $url) {
+		if(!$this->apiConnection || !is_object($this->apiConnection)) return false;
 		if($this->apiConnection->isTokenExpired()) $this->apiConnection->refreshToken();
 		$headers = array(
 			'Authorization' => $this->apiConnection->token['access_token']['token_type'] . ' ' . 
@@ -410,6 +412,7 @@ Class Google_Contacts_Connector extends WSAPP_TargetConnector {
 	 * @param <Users_Record_Model> $user
 	 */
 	protected function getPersonDetails($resourceName) {
+        if(!$this->apiConnection || !is_object($this->apiConnection)) return false;
         if($this->apiConnection->isTokenExpired()) $this->apiConnection->refreshToken();
         $headers = array(
             'Authorization' => $this->apiConnection->token['access_token']['token_type'] . ' ' . 
@@ -827,6 +830,7 @@ if($personData["memberships"][0]["contactGroupMembership"]["contactGroupResource
 	 */
 	public function pullGroups($onlyIds = FALSE) {
 		//max-results: If you want to receive all of the groups, rather than only the default maximum.
+		if(!$this->apiConnection || !is_object($this->apiConnection)) return array();
 		$query = array('pageSize'=>1000);
 		$headers = array(
 			'Authorization' => $this->apiConnection->token['access_token']['token_type'] . ' ' . 
@@ -854,6 +858,7 @@ if($personData["memberships"][0]["contactGroupMembership"]["contactGroupResource
 	 * @return <Mixed>
 	 */
 	public function getUserProfileInfo() {
+		if(!$this->apiConnection || !is_object($this->apiConnection)) return false;
 		if($this->apiConnection->isTokenExpired()) $this->apiConnection->refreshToken();
 		$headers = array(
 			'GData-Version' => $this->apiVersion,

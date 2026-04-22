@@ -40,9 +40,10 @@ class Vtiger_Mailer extends \PHPMailer\PHPMailer\PHPMailer {
 	/**
 	 * Constructor
 	 */
-	function __construct($exceptions=null) {
+	function __construct($exceptions=null, $account_id=false) {
 		global $default_charset;
-		parent::__construct();
+		parent::__construct($exceptions);
+		$this->from_email = $account_id;
 		$this->initialize();
 		$this->CharSet = $default_charset;
 	}
@@ -203,20 +204,21 @@ class Vtiger_Mailer extends \PHPMailer\PHPMailer\PHPMailer {
             
             $cc_email = array();
             
-            if(!empty($this->cc[0])) {
-                foreach($this->cc[0] as $cc){
+
+           if(!empty($this->cc)) {
+                foreach($this->cc as $cc){
                     if($cc){
-                        $cc_email[] = ['emailAddress' => ['address' => $cc]];
+                        $cc_email[] = ['emailAddress' => ['address' => $cc[0]]];
                     }
                 }
             }
             
             $bcc_email = array();
             
-            if(!empty($this->bcc[0])) {
-                foreach($this->bcc[0] as $bcc) {
+            if(!empty($this->bcc)) {
+                foreach($this->bcc as $bcc) {
                     if($bcc){
-                        $bcc_email[] = ['emailAddress' => ['address' => $bcc]];
+                        $bcc_email[] = ['emailAddress' => ['address' => $bcc[0]]];
                     }
                 }
             }
@@ -224,9 +226,9 @@ class Vtiger_Mailer extends \PHPMailer\PHPMailer\PHPMailer {
             
             $emails = array();
             
-            foreach($this->to[0] as $to_email){
+            foreach($this->to as $to_email){
                 if($to_email){
-                    $emails[] = ['emailAddress' => ['address' => $to_email]];
+                    $emails[] = ['emailAddress' => ['address' => $to_email[0]]];
                 }
             }
 			
@@ -313,14 +315,24 @@ class Vtiger_Mailer extends \PHPMailer\PHPMailer\PHPMailer {
 			                    'refresh_token' => $newRefreshToken
 			                ];
 			                
-			                // Update vtiger_systems db
+			                // Update db
 			                global $adb;
 			                $newExpiresOn = time() + $newTokensDecoded['expires_in'];
-                            $newPassword = Vtiger_Functions::toProtectedText(json_encode($updatedTokensArr));
-                            $adb->pquery(
-                                "UPDATE vtiger_systems SET password=?, auth_expireson=? WHERE server_type=? AND smtp_auth_type=?",
-                                array($newPassword, $newExpiresOn, 'email', 'XOAUTH2')
-                            );
+			                if (!$this->from_email) {
+                                $newPassword = Vtiger_Functions::toProtectedText(json_encode($updatedTokensArr));
+                                $adb->pquery(
+                                    "UPDATE vtiger_systems SET server_password=?, smtp_auth_expireson=? WHERE server_type=? AND smtp_auth_type=?",
+                                    array($newPassword, $newExpiresOn, 'email', 'XOAUTH2')
+                                );
+			                } else {
+                                require_once 'include/utils/encryption.php';
+                                $e = new Encryption();
+                                $newPassword = $e->encrypt(json_encode($updatedTokensArr));
+                                $adb->pquery(
+                                    "UPDATE vtiger_mail_accounts SET mail_password=?, auth_expireson=? WHERE account_id=?",
+                                    array($newPassword, $newExpiresOn, $this->from_email)
+                                );
+			                }
                             
 			                // Retry sending message
         			        $ch = curl_init($url);
@@ -352,6 +364,132 @@ class Vtiger_Mailer extends \PHPMailer\PHPMailer\PHPMailer {
 			$this->ErrorInfo = "Office365 Graph API Error (HTTP $httpCode): " . $response;
             return false;
 			
+		} else if (stripos($this->Host, "gmail") !== FALSE || stripos($this->Host, "google") !== FALSE) {
+			
+			$tokens = json_decode($this->Password, true);
+			$access_token = $tokens['access_token'];
+			
+			if (!$this->preSend()) {
+				return false;
+			}
+			$rawMessage = $this->getMailString();
+			$rawMessage = rtrim(strtr(base64_encode($rawMessage), '+/', '-_'), '=');
+
+			$emailData = [
+				'raw' => $rawMessage
+			];
+			
+			$url = "https://www.googleapis.com/gmail/v1/users/me/messages/send";
+			
+			$ch = curl_init($url);
+			curl_setopt($ch, CURLOPT_POST, true);
+			curl_setopt($ch, CURLOPT_HTTPHEADER, [
+				'Authorization: Bearer ' . $access_token,
+				'Content-Type: application/json',
+			]);
+			curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+			curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+			curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+			curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($emailData));
+			
+			$response = curl_exec($ch);
+			$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+			$error = curl_error($ch);
+			curl_close($ch);
+			
+            if($httpCode == 200){
+                return true;
+            }
+
+			// If unauthorized, attempt to refresh the token
+			if ($httpCode == 401) {
+			    require_once 'modules/Oauth2/Config.php';
+			    $cfgfile = "oauth2callback/config.oauth2.php";
+			    if (file_exists($cfgfile)) {
+			        $cfgdata = require_once $cfgfile;
+			        $config = Oauth2_Config::loadConfig($cfgdata);
+			        $cfg = $config->getProviderConfig('Google');
+			        
+			        // Manual token refresh via CURL
+			        $tokens = json_decode($this->Password, true);
+			        $tokenUrl = 'https://oauth2.googleapis.com/token';
+			        $postFields = http_build_query([
+			            'client_id' => $cfg['clientId'],
+			            'client_secret' => $cfg['clientSecret'],
+			            'refresh_token' => $tokens['refresh_token'],
+			            'grant_type' => 'refresh_token'
+			        ]);
+			        
+			        $chToken = curl_init($tokenUrl);
+			        curl_setopt($chToken, CURLOPT_POST, true);
+			        curl_setopt($chToken, CURLOPT_POSTFIELDS, $postFields);
+			        curl_setopt($chToken, CURLOPT_RETURNTRANSFER, true);
+			        curl_setopt($chToken, CURLOPT_TIMEOUT, 15);
+			        curl_setopt($chToken, CURLOPT_HTTPHEADER, ['Content-Type: application/x-www-form-urlencoded']);
+			        $tokenResponse = curl_exec($chToken);
+			        $tokenHttpCode = curl_getinfo($chToken, CURLINFO_HTTP_CODE);
+			        curl_close($chToken);
+			        
+			        if ($tokenHttpCode == 200) {
+			            $newTokensDecoded = json_decode($tokenResponse, true);
+			            if (isset($newTokensDecoded['access_token'])) {
+			                // Keep the old refresh_token if a new one isn't provided
+			                $newRefreshToken = isset($newTokensDecoded['refresh_token']) ? $newTokensDecoded['refresh_token'] : $tokens['refresh_token'];
+			                
+			                $updatedTokensArr = [
+			                    'access_token' => $newTokensDecoded['access_token'],
+			                    'refresh_token' => $newRefreshToken
+			                ];
+			                
+			                // Update db
+			                global $adb;
+			                $newExpiresOn = time() + $newTokensDecoded['expires_in'];
+			                if (!$this->from_email) {
+                                $newPassword = Vtiger_Functions::toProtectedText(json_encode($updatedTokensArr));
+                                $adb->pquery(
+                                    "UPDATE vtiger_systems SET server_password=?, smtp_auth_expireson=? WHERE server_type=? AND smtp_auth_type=?",
+                                    array($newPassword, $newExpiresOn, 'email', 'XOAUTH2')
+                                );
+			                } else {
+                                require_once 'include/utils/encryption.php';
+                                $e = new Encryption();
+                                $newPassword = $e->encrypt(json_encode($updatedTokensArr));
+                                $adb->pquery(
+                                    "UPDATE vtiger_mail_accounts SET mail_password=?, auth_expireson=? WHERE account_id=?",
+                                    array($newPassword, $newExpiresOn, $this->from_email)
+                                );
+			                }
+                            
+			                // Retry sending message
+        			        $ch = curl_init($url);
+        			        curl_setopt($ch, CURLOPT_POST, true);
+                			curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                				'Authorization: Bearer ' . $updatedTokensArr['access_token'],
+                				'Content-Type: application/json',
+                			]);
+                			curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+                			curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+                			curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                			curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($emailData));
+                			
+                			$response = curl_exec($ch);
+                			$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                			curl_close($ch);
+                			
+                			if($httpCode == 200){
+                				return true;
+                			}
+			            }
+			        } else {
+                        $this->ErrorInfo = "Google API Token Refresh Error (HTTP $tokenHttpCode): " . $tokenResponse . " / CURL Error: " . $error;
+                        return false;
+			        }
+			    }
+			}
+
+			$this->ErrorInfo = "Google API Error (HTTP $httpCode): " . $response;
+            return false;
+
 		} else {
 		
 			if(!$this->_serverConfigured) return;

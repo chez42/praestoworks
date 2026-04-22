@@ -32,6 +32,7 @@ class Google_Setting_View extends Vtiger_PopupAjax_View {
 		$connector = new Google_Contacts_Connector(FALSE);
 		$oauth2 = new Google_Oauth2_Connector($request->get('sourcemodule'));
 		$isSyncReady = 'no';
+		$calendars = array();
 		$selectedGoogleCalendar = Google_Utils_Helper::getSelectedCalendarForUser($user);
 		if($oauth2->hasStoredToken()) {
 			$controller = new Google_Calendar_Controller($user);
@@ -71,6 +72,7 @@ class Google_Setting_View extends Vtiger_PopupAjax_View {
 		$fieldMappping = Google_Utils_Helper::getFieldMappingForUser();
 		$oauth2 = new Google_Oauth2_Connector($request->get('sourcemodule'));
 		$isSyncReady = 'no';
+		$groups = array();
 		if($oauth2->hasStoredToken()) {
 			$controller = new Google_Contacts_Controller($user);
 			$connector = $controller->getTargetConnector();

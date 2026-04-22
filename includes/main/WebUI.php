@@ -96,8 +96,35 @@ class Vtiger_WebUI extends Vtiger_EntryPoint {
 		
 		// Better place this here as session get initiated
 		//skipping the csrf checking for the forgot(reset) password 
-		if($request->get('mode') != 'reset' && $request->get('action') != 'Login' && $request->get('mode') != 'fromMig')
-			require_once 'libraries/csrf-magic/csrf-magic.php';
+		//if($request->get('mode') != 'reset' && $request->get('action') != 'Login' && $request->get('mode') != 'fromMig')
+		//	require_once 'libraries/csrf-magic/csrf-magic.php';
+
+$module = $request->get('module');
+$action = $request->get('action');
+$mode   = $request->get('mode');
+
+// Skip CSRF for:
+// - reset password
+// - login
+// - migration
+// - Mail Manager OAuth2 + AJAX flows
+$skipCsrf = false;
+
+if ($mode === 'reset' || $action === 'Login' || $mode === 'fromMig') {
+    $skipCsrf = true;
+}
+
+if ($module === 'MailManager') {
+    // These actions are used by Gmail/Outlook OAuth2 and IMAP AJAX calls
+    if (preg_match('/OAuth2|CheckOAuthToken|Ajax/i', (string)$action)) {
+	//if (empty($action) || preg_match('/OAuth2|CheckOAuthToken|Ajax|Folder|FolderSync/i', $action)) {
+        $skipCsrf = true;
+    }
+}
+
+if (!$skipCsrf) {
+    require_once 'libraries/csrf-magic/csrf-magic.php';
+}
 
 		// TODO - Get rid of global variable $current_user
 		// common utils api called, depend on this variable right now

@@ -172,7 +172,10 @@ class MailManager_Mail_View extends MailManager_Abstract_View {
 					$userFullName = $currentUserModel->get('userlabel');
 					$userId = $currentUserModel->getId();
 
-					$mailer = new Vtiger_Mailer();
+					$mailboxModel = MailManager_Mailbox_Model::activeInstance();
+					$accountId = $mailboxModel->account_id();
+
+					$mailer = new Vtiger_Mailer(null, $accountId);
 					$mailer->IsHTML(true);
 					$mailer->ConfigSenderInfo($fromEmail, $userFullName, $currentUserModel->get('email1'));
 					$mailer->Subject = $subject;

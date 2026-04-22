@@ -99,7 +99,7 @@ class Oauth2_Usercallback_Callbacks
             // For Office365, select_account is enough to avoid repetitive consent prompts
             // while still allowing account selection if multiple accounts are logged in.
             if ($authsvc === 'Office365') {
-                $authParams['prompt'] = 'consent';
+                $authParams['prompt'] = 'select_account';
             } else {
                 // Retain existing behavior for Google and other services
                 $authParams['prompt'] = 'consent';
