@@ -20,13 +20,17 @@ class MailManager_Settings_View extends MailManager_MainUI_View {
 		$module = $request->getModule();
 		if ('edit' == $this->getOperationArg($request)) {
 
-			$model = $this->getMailBoxModel();
-            $connector = $this->getConnector();
+			$accountId = $request->get('account_id');
+			$model = $this->getMailboxModel();
+			$folders = array();
 			$serverName = $model->serverName();
 
-            if ($connector->isConnected()) {
-                $folders = $connector->folders();
-            }
+			if ($model->exists()) {
+				$connector = $this->getConnector();
+				if ($connector->isConnected()) {
+					$folders = $connector->folders();
+				}
+			}
 			$viewer = $this->getViewer($request);
 			$viewer->assign('MODULE', $module);
 			$viewer->assign('MAILBOX', $model);
@@ -37,7 +41,7 @@ class MailManager_Settings_View extends MailManager_MainUI_View {
 
 		} else if ('save' == $this->getOperationArg($request)) {
 
-			$model = $this->getMailBoxModel();
+			$model = $this->getMailboxModel();
 			$model->setServer($request->get('_mbox_server'));
 			$model->setUsername($request->get('_mbox_user'));
             // MailManager_Request->get($key) is give urldecoded value which is replacing + with space
@@ -46,7 +50,7 @@ class MailManager_Settings_View extends MailManager_MainUI_View {
 			$model->setSSLType($request->get('_mbox_ssltype', 'ssl'));
 			$model->setCertValidate($request->get('_mbox_certvalidate', 'novalidate-cert'));
 			$model->setRefreshTimeOut($request->get('_mbox_refresh_timeout'));
-			$connector = $this->getConnector();
+			$connector = MailManager_Connector_Connector::connectorWithModel($model);
             $sentFolder = $request->get('_mbox_sent_folder');
             if($connector->isConnected() && empty($sentFolder)) {
                 $folderInstaces = $connector->folders();
@@ -69,7 +73,7 @@ class MailManager_Settings_View extends MailManager_MainUI_View {
 			}
 		} else if ('remove' == $this->getOperationArg($request)) {
 
-			$model = $this->getMailBoxModel();
+			$model = MailManager_Mailbox_Model::getInstanceById($request->get('account_id'));
 			$model->delete();
 
 			$response->isJSON(true);
@@ -91,7 +95,11 @@ class MailManager_Settings_View extends MailManager_MainUI_View {
 	}
     
     public function validateRequest(Vtiger_Request $request) {
-        return $request->validateWriteAccess();
+        $operationArg = $this->getOperationArg($request);
+        if ($operationArg == 'save' || $operationArg == 'remove') {
+            return $request->validateWriteAccess();
+        }
+        return $request->validateReadAccess();
     }
 }
 ?>

@@ -99,7 +99,7 @@ class MailManager_Folder_View extends MailManager_Abstract_View {
 			$response->setResult($viewer->view('FolderDrafts.tpl', $moduleName, true));
 		} else if ('getFoldersList' == $this->getOperationArg($request)) {
 			$viewer = $this->getViewer($request);
-			if ($this->hasMailboxModel()) {
+			if ($this->hasMailboxModel($request->get('account_id'))) {
 				$connector = $this->getConnector();
 
 				if ($connector->isConnected()) {

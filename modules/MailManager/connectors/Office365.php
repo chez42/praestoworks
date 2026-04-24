@@ -16,25 +16,89 @@ class MailManager_Office365_Connector extends MailManager_Connector_Connector {
     public $refresh_token;
     public $model;
     public $officeFolders = array();
-    private $baseUrl = 'https://graph.microsoft.com/v1.0';
+    protected $baseUrl = 'https://graph.microsoft.com/v1.0';
 
 
     public static function connectorWithModel($model, $type = '') {
         $tokens = json_decode($model->password(), true);
-        return new MailManager_Office365_Connector($tokens);
+        return new MailManager_Office365_Connector($tokens, $model);
     }
 
-    public function __construct($tokens = false) {
+    public function __construct($tokens = false, $model = null) {
+        $this->baseUrl = 'https://graph.microsoft.com/v1.0';
+        $this->model = $model;
         if (!$tokens || !isset($tokens['access_token'])) {
             throw new Exception('Invalid tokens provided');
         }
         $this->access_token  = $tokens['access_token'];
         $this->refresh_token = $tokens['refresh_token'] ?? null;
+        
+        $expiresOn = $model ? $model->authexpireson() : 0;
+        if (time() >= ($expiresOn - 300)) {
+            $this->refreshToken();
+        }
+
         try {
             $this->makeGraphRequest('/me');
             $this->mBox = true;
         } catch (Exception $e) {
-            $this->mBox = false;
+            if (strpos($e->getMessage(), '401') !== false && !empty($this->refresh_token)) {
+                 if ($this->refreshToken()) {
+                     try {
+                         $this->makeGraphRequest('/me');
+                         $this->mBox = true;
+                     } catch (Exception $e2) {
+                         $this->mBox = false;
+                     }
+                 } else {
+                     $this->mBox = false;
+                 }
+            } else {
+                $this->mBox = false;
+            }
+        }
+    }
+
+    public function refreshToken() {
+        if (empty($this->refresh_token)) {
+            return false;
+        }
+
+        require_once "vendor/autoload.php";
+        require_once "modules/Oauth2/Config.php";
+        $cfgdata = require_once "oauth2callback/config.oauth2.php";
+        $config = Oauth2_Config::loadConfig($cfgdata);
+        $authcfg = $config->getProviderConfig('Office365');
+
+        if (empty($authcfg['clientId'])) {
+            return false;
+        }
+
+        $provider = new \League\OAuth2\Client\Provider\GenericProvider($authcfg);
+        try {
+            $newAccessToken = $provider->getAccessToken('refresh_token', [
+                'refresh_token' => $this->refresh_token
+            ]);
+
+            $this->access_token = $newAccessToken->getToken();
+            if ($newAccessToken->getRefreshToken()) {
+                $this->refresh_token = $newAccessToken->getRefreshToken();
+            }
+            $expiresOn = $newAccessToken->getExpires();
+
+            $tokens = [
+                'access_token' => $this->access_token,
+                'refresh_token' => $this->refresh_token
+            ];
+
+            if ($this->model) {
+                $db = PearDatabase::getInstance();
+                $db->pquery("UPDATE vtiger_mail_accounts SET mail_password=?, auth_expireson=? WHERE account_id=?", 
+                    array(Vtiger_Functions::toProtectedText(json_encode($tokens)), $expiresOn, $this->model->mId));
+            }
+            return true;
+        } catch (Exception $e) {
+            return false;
         }
     }
 
@@ -66,8 +130,12 @@ class MailManager_Office365_Connector extends MailManager_Connector_Connector {
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $error    = curl_error($ch);
         curl_close($ch);
-        if ($error) throw new Exception('cURL Error: ' . $error);
-        if ($httpCode >= 400) throw new Exception('HTTP Error ' . $httpCode . ': ' . $response);
+        if ($error) {
+            throw new Exception('cURL Error: ' . $error);
+        }
+        if ($httpCode >= 400) {
+            throw new Exception('HTTP Error ' . $httpCode . ': ' . $response);
+        }
         return json_decode($response, true);
     }
 
@@ -123,7 +191,7 @@ class MailManager_Office365_Connector extends MailManager_Connector_Connector {
                 }
             }
             if ($folderid) {
-                $endpoint   = '/me/mailFolders/' . base64_decode($folderid) . '/messages?$filter=IsRead ne true&$count=true';
+                $endpoint   = '/me/mailFolders/' . base64_decode($folderid) . '/messages?$filter=IsRead%20ne%20true&$count=true';
                 $response   = $this->makeGraphRequest($endpoint);
                 $unreadCount = isset($response['@odata.count']) ? $response['@odata.count'] : 0;
                 $folder->setUnreadCount((string)$unreadCount);

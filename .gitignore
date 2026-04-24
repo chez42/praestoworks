@@ -7,3 +7,4 @@ user_privileges/*
 .vscode/*
 config.inc.php
 portal/writeable/templates_c/default/*
+pma/*

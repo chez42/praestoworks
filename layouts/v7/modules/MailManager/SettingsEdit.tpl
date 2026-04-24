@@ -8,15 +8,16 @@
  ************************************************************************************}
 
 {strip}
-    <div class="modal-dialog modal-md mapcontainer">
+    <div class="modal-dialog modal-md">
         <div class="modal-content">
             {if $MAILBOX->exists()}
                 {assign var=MODAL_TITLE value=vtranslate('LBL_EDIT_MAILBOX', $MODULE)}
             {else}
                 {assign var=MODAL_TITLE value=vtranslate('LBL_CREATE_MAILBOX', $MODULE)}
             {/if}
-            {include file="ModalHeader.tpl"|vtemplate_path:$SOURCE_MODULE TITLE=$MODAL_TITLE}
+            {include file="ModalHeader.tpl"|vtemplate_path:"Vtiger" TITLE=$MODAL_TITLE}
             <form id="EditView" method="POST">
+                <input type="hidden" name="account_id" value="{$MAILBOX->mId}" />
                 <div class="modal-body" id="mmSettingEditModal">
                     <table class="table table-borderless">
                         <tbody>
@@ -29,8 +30,6 @@
                                         <option></option>
                                         <option value='google-oauth2' {if $SERVERNAME eq 'gmail' && $AUTHTYPE eq 'XOAUTH2'} selected {/if}>{vtranslate('JSLBL_Gmail',$MODULE)} OAuth2</option>
                                         <option value='Office365' {if $SERVERNAME eq 'Office365'} selected {/if}>{vtranslate('Office365',$MODULE)}</option>
-										{* Google stopped IMAP with password from Sep 30, 2024 *}
-                                        {* <option value='gmail' {if $SERVERNAME eq 'gmail'} selected {/if}>{vtranslate('JSLBL_Gmail',$MODULE)}</option> *}
                                         <option value='yahoo' {if $SERVERNAME eq 'yahoo'} selected {/if}>{vtranslate('JSLBL_Yahoo',$MODULE)}</option>
                                         <option value='fastmail' {if $SERVERNAME eq 'fastmail'} selected {/if}>{vtranslate('JSLBL_Fastmail',$MODULE)}</option>
                                         <option value='other' {if $SERVERNAME eq 'other'} selected {/if}>{vtranslate('JSLBL_Other',$MODULE)}</option>

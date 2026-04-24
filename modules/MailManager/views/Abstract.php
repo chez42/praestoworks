@@ -44,6 +44,7 @@ abstract class MailManager_Abstract_View extends Vtiger_Index_View {
 	public function getViewer(Vtiger_Request $request) {
 		$viewer = parent::getViewer($request);
 		$viewer->assign('MAILBOX', $this->getMailboxModel());
+		$viewer->assign('MAILMODELS', MailManager_Mailbox_Model::getAllMailBoxes());
 		$viewer->assign('QUALIFIED_MODULE', $request->get('module'));
 		return $viewer;
 	}
@@ -81,7 +82,8 @@ abstract class MailManager_Abstract_View extends Vtiger_Index_View {
 	 */
 	protected function getMailboxModel() {
 		if ($this->mMailboxModel === false) {
-			$this->mMailboxModel = MailManager_Mailbox_Model::activeInstance();
+			$request = new Vtiger_Request($_REQUEST, $_REQUEST);
+			$this->mMailboxModel = MailManager_Mailbox_Model::activeInstance(false, $request->get('mode'));
 		}
 		return $this->mMailboxModel;
 	}

@@ -13,14 +13,15 @@ Vtiger_List_Js("MailManager_List_Js", {}, {
 		return jQuery('.main-container');
 	},
 
-	loadFolders: function (folder) {
+	loadFolders: function (folder, accountId) {
 		app.helper.showProgress(app.vtranslate("JSLBL_Loading_Please_Wait") + "...");
 		var self = this;
 		var params = {
 			'module': app.getModuleName(),
 			'view': 'Index',
 			'_operation': 'folder',
-			'_operationarg': 'getFoldersList'
+			'_operationarg': 'getFoldersList',
+			'account_id' : accountId
 		}
 		app.request.post({ "data": params }).then(function (error, responseData) {
 			app.helper.hideProgress();
@@ -96,13 +97,15 @@ Vtiger_List_Js("MailManager_List_Js", {}, {
 	registerSettingsEdit: function () {
 		var self = this;
 		var container = this.getContainer();
-		container.find('.mailbox_setting').click(function () {
+		jQuery(document).on('click', '.mailbox_setting', function () {
+			var accountId = jQuery(this).data('boxid');
 			app.helper.showProgress(app.vtranslate("JSLBL_Loading_Please_Wait") + "...");
 			var params = {
 				'module': 'MailManager',
 				'view': 'Index',
 				'_operation': 'settings',
-				'_operationarg': 'edit'
+				'_operationarg': 'edit',
+				'account_id': accountId
 			};
 			var popupInstance = Vtiger_Popup_Js.getInstance();
 			popupInstance.showPopup(params, '', function (data) {
@@ -217,14 +220,18 @@ Vtiger_List_Js("MailManager_List_Js", {}, {
 			e.preventDefault();
 
 
+			var form = settingContainer.find('#EditView');
+			var data = form.serializeFormData();
+			var accountId = data['account_id'] || '';
+
 			var serverType = jQuery('#serverType').val();
 
 			if (serverType == 'Office365' || serverType == 'google-oauth2') {
 
 				if (serverType == 'Office365') {
-					var url = 'oauth2callback/index.php?authfor=MailManager&authservice=Office365';
+					var url = 'oauth2callback/index.php?authfor=MailManager&authservice=Office365&account_id=' + accountId;
 				} else {
-					var url = 'oauth2callback/index.php?authfor=MailManager&authservice=Google';
+					var url = 'oauth2callback/index.php?authfor=MailManager&authservice=Google&account_id=' + accountId;
 				}
 
 				window.open(url, '', 'height=600,width=600,channelmode=1');
@@ -1688,6 +1695,42 @@ Vtiger_List_Js("MailManager_List_Js", {}, {
 		});
 	},
 
+	registerOpenMailMangerId: function(){
+		var thisInstance = this;
+		jQuery(document).on('click', '.openMailId', function(e){
+			var target = jQuery(e.target); 
+			if(target.hasClass('mailbox_setting'))return;
+			if(target.hasClass('deleteMailManager'))return;
+			
+			var accountId = $(this).data('boxid');
+			var accountName = $(this).find('.mailAccountName').text().trim();
+			if (accountName) {
+				jQuery('.mailUserName').text(accountName);
+			}
+			thisInstance.loadFolders('',accountId);
+			
+		});
+
+		jQuery(document).on('click', '.deleteMailManager', function(e) {
+			e.preventDefault();
+			var accountId = jQuery(this).data('boxid');
+			app.helper.showProgress(app.vtranslate("JSLBL_Deleting") + "...");
+			var params = {
+				'module': 'MailManager',
+				'view': 'Index',
+				'_operation': 'settings',
+				'_operationarg': 'remove',
+				'account_id': accountId
+			};
+			app.request.post({ "data": params }).then(function (error, responseData) {
+				app.helper.hideProgress();
+				if (responseData && responseData.status) {
+					window.location.reload();
+				}
+			});
+		});
+	},
+
 	registerEvents: function () {
 		var self = this;
 		self.loadFolders();
@@ -1697,5 +1740,6 @@ Vtiger_List_Js("MailManager_List_Js", {}, {
 		self.registerRefreshFolder();
 		self.registerSearchTypeChangeEvent();
 		self.registerPostMailSentEvent();
+		self.registerOpenMailMangerId();
 	}
 });

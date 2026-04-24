@@ -25,7 +25,7 @@ class MailManager_MainUI_View extends MailManager_Abstract_View {
 			$response->setResult( array('ui' => $content));
 			return $response;
 		} else {
-			if ($this->hasMailboxModel()) {
+			if ($this->hasMailboxModel($request->get('account_id'))) {
 				$connector = $this->getConnector();
 
 				if ($connector->hasError()) {
@@ -39,7 +39,7 @@ class MailManager_MainUI_View extends MailManager_Abstract_View {
 			}
 			$viewer->assign('MODULE', $moduleName);
 			$content = $viewer->view('Mainui.tpl', $moduleName, true);
-			$response->setResult( array('mailbox' => $this->hasMailboxModel(), 'ui' => $content));
+			$response->setResult( array('mailbox' => $this->hasMailboxModel($request->get('account_id')), 'ui' => $content));
 			return $response;
 		}
 	}

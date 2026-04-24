@@ -80,14 +80,13 @@ class Vtiger_Mailer extends \PHPMailer\PHPMailer\PHPMailer {
 			$this->Host = $adb->query_result($result, 0, 'server');
 			$this->Username = decode_html($adb->query_result($result, 0, 'server_username'));
 			
-			if(!$this->from_email){
-				$this->Password = Vtiger_Functions::fromProtectedText(decode_html($adb->query_result($result, 0, 'server_password')));
+			$password = decode_html($adb->query_result($result, 0, 'server_password'));
+			if (class_exists('Vtiger_Functions') && Vtiger_Functions::isProtectedText($password)) {
+				$this->Password = Vtiger_Functions::fromProtectedText($password);
 			} else {
 				require_once('include/utils/encryption.php');
 				$e = new Encryption();
-				$password = decode_html($adb->query_result($result, 0, 'server_password'));
-				$password = $e->decrypt($password);
-				$this->Password = $password;
+				$this->Password = $e->decrypt($password);
 			}
 			
 			$this->SMTPAuth = $adb->query_result($result, 0, 'smtp_auth');
@@ -325,9 +324,7 @@ class Vtiger_Mailer extends \PHPMailer\PHPMailer\PHPMailer {
                                     array($newPassword, $newExpiresOn, 'email', 'XOAUTH2')
                                 );
 			                } else {
-                                require_once 'include/utils/encryption.php';
-                                $e = new Encryption();
-                                $newPassword = $e->encrypt(json_encode($updatedTokensArr));
+                                $newPassword = Vtiger_Functions::toProtectedText(json_encode($updatedTokensArr));
                                 $adb->pquery(
                                     "UPDATE vtiger_mail_accounts SET mail_password=?, auth_expireson=? WHERE account_id=?",
                                     array($newPassword, $newExpiresOn, $this->from_email)
@@ -451,9 +448,7 @@ class Vtiger_Mailer extends \PHPMailer\PHPMailer\PHPMailer {
                                     array($newPassword, $newExpiresOn, 'email', 'XOAUTH2')
                                 );
 			                } else {
-                                require_once 'include/utils/encryption.php';
-                                $e = new Encryption();
-                                $newPassword = $e->encrypt(json_encode($updatedTokensArr));
+                                $newPassword = Vtiger_Functions::toProtectedText(json_encode($updatedTokensArr));
                                 $adb->pquery(
                                     "UPDATE vtiger_mail_accounts SET mail_password=?, auth_expireson=? WHERE account_id=?",
                                     array($newPassword, $newExpiresOn, $this->from_email)
@@ -585,7 +580,8 @@ class Vtiger_Mailer extends \PHPMailer\PHPMailer\PHPMailer {
 	 * @return type
 	 */
 	public function getMailString() {
-		return $this->MIMEHeader.$this->MIMEBody;
+		$le = (!empty($this->LE) ? $this->LE : "\r\n");
+		return $this->MIMEHeader . $le . $this->MIMEBody;
 	}
 
 	/**

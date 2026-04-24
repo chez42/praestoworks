@@ -229,7 +229,7 @@ class Vtiger_ComposeEmail_View extends Vtiger_Footer_View {
 		global $adb;
 		$currentUser = Users_Record_Model::getCurrentUserModel();
 		$userId = $currentUser->getId();
-		$mail_accounts_result = $adb->pquery("SELECT * FROM vtiger_mail_accounts WHERE user_id=? and mail_servername = 'imap.office365.com'", array($userId));
+		$mail_accounts_result = $adb->pquery("SELECT * FROM vtiger_mail_accounts WHERE user_id=?", array($userId));
 		if ($adb->num_rows($mail_accounts_result)) {
 		    for($u=0;$u<$adb->num_rows($mail_accounts_result);$u++){
 		        $MAIL_SERVERS[] = array(

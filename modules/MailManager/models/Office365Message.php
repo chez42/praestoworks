@@ -346,9 +346,14 @@ class MailManager_Office365Message_Model extends Vtiger_MailRecord {
         $binFile    = sanitizeUploadFileName($filename, vglobal('upload_badext'));
         $attachid   = $db->getUniqueId('vtiger_crmentity');
         $saveasfile = "$dirname/$attachid" . "_" . $binFile;
-        $fh = fopen($saveasfile, 'wb');
-        fwrite($fh, $filecontent);
-        fclose($fh);
+        $fh = @fopen($saveasfile, 'wb');
+        if ($fh) {
+            fwrite($fh, $filecontent);
+            fclose($fh);
+        } else {
+            error_log("MailManager_Office365Message_Model::__SaveAttachmentFile: failed to open $saveasfile for writing.");
+            return false;
+        }
         $mimetype = MailAttachmentMIME::detect($saveasfile);
         $db->pquery(
             "INSERT INTO vtiger_crmentity(crmid, smcreatorid, smownerid, modifiedby, setype,

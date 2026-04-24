@@ -17,7 +17,7 @@ class MailManager_Mailbox_Model {
 	protected $mSSLType  = 'ssl';
 	protected $mCertValidate = 'novalidate-cert';
 	protected $mRefreshTimeOut;
-	protected $mId;
+	public $mId;
 	protected $mServerName;
     protected $mFolder;
 	protected $mAuthType;
@@ -29,12 +29,18 @@ class MailManager_Mailbox_Model {
 	}
 
 	public function decrypt($value) {
+		if (class_exists('Vtiger_Functions') && Vtiger_Functions::isProtectedText($value)) {
+			return Vtiger_Functions::fromProtectedText($value);
+		}
 		require_once('include/utils/encryption.php');
 		$e = new Encryption();
 		return $e->decrypt($value);
 	}
 
 	public function encrypt($value) {
+		if (class_exists('Vtiger_Functions')) {
+			return Vtiger_Functions::toProtectedText($value);
+		}
 		require_once('include/utils/encryption.php');
 		$e = new Encryption();
 		return $e->encrypt($value);
@@ -145,6 +151,11 @@ class MailManager_Mailbox_Model {
 		$db = PearDatabase::getInstance();
 		$currentUserModel = Users_Record_Model::getCurrentUserModel();
 		$db->pquery("DELETE FROM vtiger_mail_accounts WHERE user_id = ? AND account_id = ?", array($currentUserModel->getId(), $this->mId));
+
+		$mail = $db->pquery("SELECT * FROM vtiger_mail_accounts WHERE set_default = 0 AND user_id = ?", array($currentUserModel->getId()));
+		if(!$db->num_rows($mail)) {
+			$db->pquery("UPDATE vtiger_mail_accounts SET set_default = 0 WHERE user_id = ? ORDER BY account_id DESC", array($currentUserModel->getId()));
+		}
 	}
 
 	public function save() {
@@ -174,23 +185,93 @@ class MailManager_Mailbox_Model {
 		$db->pquery($sql, $parameters);
 		if (!$isUpdate) {
 			$this->mId = $account_id;
+			$_SESSION['mailmanager_active_account_id'] = $this->mId;
 		}
 	}
 
-	public static function activeInstance($currentUserModel = false) {
-		static $cachedInstance = array();
+	public static function activeInstance($accountId = false, $mode = false, $currentUserModel = false) {
+
 		if(!$currentUserModel)
 			$currentUserModel = Users_Record_Model::getCurrentUserModel();
 			
 		$userId = $currentUserModel->getId();
-		if (isset($cachedInstance[$userId])) {
-			return $cachedInstance[$userId];
+		$db = PearDatabase::getInstance();
+
+		// Check request for explicit account switch
+		// Check request for explicit account switch
+		if (!$accountId && isset($_REQUEST['account_id']) && $_REQUEST['account_id'] !== '') {
+			$accountId = $_REQUEST['account_id'];
 		}
 
+		// Check session if no explicit account provided, but skip if we are creating a new one
+		if (!$accountId && isset($_SESSION['mailmanager_active_account_id']) && !(isset($_REQUEST['create']) && $_REQUEST['create'] == 'new')) {
+			$accountId = $_SESSION['mailmanager_active_account_id'];
+		}
+
+		$instance = new MailManager_Mailbox_Model();
+
+		if(($mode == 'edit' && $accountId == false) || (isset($_REQUEST['create']) && $_REQUEST['create'] == 'new')){
+			return $instance;
+		} 
+
+		if(!$accountId){
+			// Fallback: try to find an account with set_default=0
+			$result = $db->pquery("SELECT * FROM vtiger_mail_accounts WHERE user_id=? AND status=1 AND set_default=0", array($userId));
+			if (!$db->num_rows($result)) {
+				// Fallback to first available account
+				$result = $db->pquery("SELECT * FROM vtiger_mail_accounts WHERE user_id=? AND status=1 LIMIT 1", array($userId));
+			}
+		} else {
+			$result = $db->pquery("SELECT * FROM vtiger_mail_accounts WHERE user_id=? AND account_id=?", array($userId, $accountId));
+			
+			// If account found, update session and database default
+			if ($db->num_rows($result)) {
+				$_SESSION['mailmanager_active_account_id'] = $accountId;
+				if($mode != 'edit'){
+					$db->pquery("UPDATE vtiger_mail_accounts SET set_default = ? WHERE user_id = ?",array(1, $userId));
+					$db->pquery("UPDATE vtiger_mail_accounts SET set_default = ? WHERE user_id = ? AND account_id=?",array(0, $userId, $accountId));
+				}
+			} else {
+				// Invalid account ID in session/request, clear it and retry fallback
+				unset($_SESSION['mailmanager_active_account_id']);
+				// IMPORTANT: Also clear from REQUEST to avoid infinite recursion
+				unset($_REQUEST['account_id']);
+				return self::activeInstance(false, $mode, $currentUserModel);
+			}
+		}
+
+		if ($db->num_rows($result)) {
+			$instance->mServer = trim($db->query_result($result, 0, 'mail_servername'));
+			$instance->mUsername = trim($db->query_result($result, 0, 'mail_username'));
+			$instance->mPassword = trim($db->query_result($result, 0, 'mail_password'));
+			$instance->mProtocol = trim($db->query_result($result, 0, 'mail_protocol'));
+			$instance->mSSLType = trim($db->query_result($result, 0, 'ssltype'));
+			$instance->mCertValidate = trim($db->query_result($result, 0, 'sslmeth'));
+			$instance->mId = trim($db->query_result($result, 0, 'account_id'));
+			$instance->mRefreshTimeOut = trim($db->query_result($result, 0, 'box_refresh'));
+			$instance->mAuthType = trim($db->query_result($result, 0, 'auth_type'));
+			$instance->mAuthExpiresOn = $db->query_result($result, 0, 'auth_expireson');
+			$instance->mProxy = trim($db->query_result($result, 0, 'mail_proxy'));
+            $instance->mFolder = trim($db->query_result($result, 0, 'sent_folder'));
+			$instance->mServerName = self::setServerName($instance->mServer);
+			
+			// Ensure session is set for the loaded account
+			$_SESSION['mailmanager_active_account_id'] = $instance->mId;
+		} else {
+		}
+		
+		return $instance;
+	}
+
+	public static function getInstanceById($accountId, $currentUserModel = false) {
+		if(!$currentUserModel)
+			$currentUserModel = Users_Record_Model::getCurrentUserModel();
+			
+		$userId = $currentUserModel->getId();
 		$db = PearDatabase::getInstance();
 		$instance = new MailManager_Mailbox_Model();
 
-		$result = $db->pquery("SELECT * FROM vtiger_mail_accounts WHERE user_id=? AND status=1 AND set_default=0", array($userId));
+		$result = $db->pquery("SELECT * FROM vtiger_mail_accounts WHERE user_id=? AND account_id=?", array($userId, $accountId));
 		if ($db->num_rows($result)) {
 			$instance->mServer = trim($db->query_result($result, 0, 'mail_servername'));
 			$instance->mUsername = trim($db->query_result($result, 0, 'mail_username'));
@@ -206,8 +287,6 @@ class MailManager_Mailbox_Model {
             $instance->mFolder = trim($db->query_result($result, 0, 'sent_folder'));
 			$instance->mServerName = self::setServerName($instance->mServer);
 		}
-		
-		$cachedInstance[$userId] = $instance;
 		return $instance;
 	}
 
@@ -224,6 +303,22 @@ class MailManager_Mailbox_Model {
 			$mServerName = 'other';
 		}
 		return $mServerName;
+	}
+
+	public static function getAllMailBoxes() {
+		$mailBox = array();
+		$db = PearDatabase::getInstance();
+		$currentUserModel = Users_Record_Model::getCurrentUserModel();
+		
+		$result = $db->pquery("SELECT * FROM vtiger_mail_accounts WHERE user_id=?", array($currentUserModel->getId()));
+		if ($db->num_rows($result)) {
+			for($u=0; $u<$db->num_rows($result); $u++){
+				$mailBox[$u]['account_id'] = $db->query_result($result, $u, 'account_id');
+				$mailBox[$u]['account_name'] = $db->query_result($result, $u, 'mail_username');
+				$mailBox[$u]['server'] = $db->query_result($result, $u, 'mail_servername');
+			}
+		}
+		return $mailBox;
 	}
 
 }

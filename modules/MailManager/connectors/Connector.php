@@ -89,7 +89,7 @@ class MailManager_Connector_Connector
 			$model->ssltype(),
 			$model->certvalidate()
 		);
-		return new self($url, $model->username(), $model->password(), $baseUrl, $model->serverName(), $model->mailproxy(), $model->authtype());
+		return new self($url, $model->username(), $model->password(), $baseUrl, $model->serverName(), $model->mailproxy(), $model->authtype(), $model);
 	}
 
 
@@ -101,22 +101,101 @@ class MailManager_Connector_Connector
 	 * @param $baseUrl Optional - url of the mailserver excluding folder name.
 	 *	This is used to fetch the folders of the mail box
 	 */
-	public function __construct($url, $username, $password, $baseUrl = false, $serverName = '', $mailproxy = '', $authtype = '')
+	public function __construct($url, $username, $password, $baseUrl = false, $serverName = '', $mailproxy = '', $authtype = '', $model = null)
 	{
 		$boxUrl = $this->convertCharacterEncoding(html_entity_decode($url), 'UTF7-IMAP', 'UTF-8'); //handle both utf8 characters and html entities
 		$this->mBoxUrl = $boxUrl;
 		$this->mBoxBaseUrl = $baseUrl; // Used for folder List
 
 		if ($serverName == 'gmail') {
-			if ($authtype == "XOAUTH2") {
+			if ($authtype == "XOAUTH2" || $authtype == "google-oauth2") {
+				$tokens = json_decode($password, true);
+				$expiresOn = $model ? $model->authexpireson() : 0;
+				
+				// Automatically refresh token if it's within 5 minutes of expiring
+				if (time() >= ($expiresOn - 300)) {
+					if (!empty($tokens['refresh_token'])) {
+						require_once "vendor/autoload.php";
+						require_once "modules/Oauth2/Config.php";
+						$cfgdata = require_once "oauth2callback/config.oauth2.php";
+						$config = Oauth2_Config::loadConfig($cfgdata);
+						$authcfg = $config->getProviderConfig('Google');
+						
+						if (!empty($authcfg['clientId'])) {
+							$provider = new \League\OAuth2\Client\Provider\GenericProvider($authcfg);
+							try {
+								$newAccessToken = $provider->getAccessToken('refresh_token', [
+									'refresh_token' => $tokens['refresh_token']
+								]);
+								
+								$tokens['access_token'] = $newAccessToken->getToken();
+								if ($newAccessToken->getRefreshToken()) {
+									$tokens['refresh_token'] = $newAccessToken->getRefreshToken();
+								}
+								$expiresOn = $newAccessToken->getExpires();
+								
+								if ($model) {
+									$db = PearDatabase::getInstance();
+									$db->pquery("UPDATE vtiger_mail_accounts SET mail_password=?, auth_expireson=? WHERE account_id=?", 
+										array(Vtiger_Functions::toProtectedText(json_encode($tokens)), $expiresOn, $model->mId));
+								}
+							} catch (Exception $e) {
+							}
+						}
+					} else {
+					}
+				}
+				
+				$password = $tokens["access_token"];
+
 				// route request to local-imap proxy server.
 				$folder = substr($boxUrl, strpos($boxUrl, '}') + 1);
 				if ($folder == '') $folder = 'INBOX';
-				$boxUrl = sprintf("{%s/IMAP4/notls/novalidate-cert}%s", $mailproxy, $folder);
-				$tokens = json_decode($password, true);
-				$password = $tokens["access_token"];
+				if (!empty($mailproxy)) {
+					$boxUrl = sprintf("{%s/IMAP4/notls/novalidate-cert}%s", $mailproxy, $folder);
+				}
 			}
+			
+			// Set a short timeout to prevent infinite hanging if the proxy returns a SASL challenge for an expired token
+			imap_timeout(IMAP_OPENTIMEOUT, 5);
+			imap_timeout(IMAP_READTIMEOUT, 5);
 			$this->mBox = @imap_open($boxUrl, $username, $password);
+			
+			// If it failed and we are using Google OAuth, try to force a token refresh
+			if (!$this->mBox && $serverName == 'gmail' && ($authtype == "XOAUTH2" || $authtype == "google-oauth2") && !empty($tokens['refresh_token'])) {
+				require_once "vendor/autoload.php";
+				require_once "modules/Oauth2/Config.php";
+				$cfgdata = require_once "oauth2callback/config.oauth2.php";
+				$config = Oauth2_Config::loadConfig($cfgdata);
+				$authcfg = $config->getProviderConfig('Google');
+				
+				if (!empty($authcfg['clientId'])) {
+					$provider = new \League\OAuth2\Client\Provider\GenericProvider($authcfg);
+					try {
+						$newAccessToken = $provider->getAccessToken('refresh_token', [
+							'refresh_token' => $tokens['refresh_token']
+						]);
+						
+						$tokens['access_token'] = $newAccessToken->getToken();
+						$password = $tokens['access_token'];
+						if ($newAccessToken->getRefreshToken()) {
+							$tokens['refresh_token'] = $newAccessToken->getRefreshToken();
+						}
+						
+						if ($model) {
+							$db = PearDatabase::getInstance();
+							$db->pquery("UPDATE vtiger_mail_accounts SET mail_password=?, auth_expireson=? WHERE account_id=?", 
+								array(Vtiger_Functions::toProtectedText(json_encode($tokens)), $newAccessToken->getExpires(), $model->mId));
+						}
+						$this->mBox = @imap_open($boxUrl, $username, $password);
+					} catch (Exception $e) {
+					}
+				}
+			}
+
+			if (!$this->mBox) {
+				$this->mError = imap_last_error();
+			}
 			// Also update base URL for folder listing to match connection flags
 			$this->mBoxBaseUrl = str_replace("}INBOX", "}", $boxUrl);
 		} else {
@@ -198,18 +277,25 @@ class MailManager_Connector_Connector
 	 * Reads mail box folders
 	 * @param string $ref Optional -
 	 */
-	public function folders($ref = "{folder}")
+	public function folders($ref = false)
 	{
 		if ($this->mFolders) return $this->mFolders;
 
+		if (!$ref) $ref = $this->mBoxBaseUrl;
 		$result = imap_getmailboxes($this->mBox, $ref, "*");
-		if ($this->isError()) return false;
+		if ($this->isError()) {
+			return false;
+		}
 
 		$folders = array();
-		foreach ($result as $row) {
-			$folderName = str_replace($ref, "", $row->name);
-			$folder = $this->convertCharacterEncoding($folderName, "UTF-8", "UTF7-IMAP"); //Decode folder name
-			$folders[] = $this->folderInstance($folder);
+		if (is_array($result)) {
+			foreach ($result as $row) {
+				$folderName = str_replace($ref, "", $row->name);
+				$folderName = str_ireplace($ref, "", $row->name); // case insensitive fallback
+				$folder = $this->convertCharacterEncoding($folderName, "UTF-8", "UTF7-IMAP"); //Decode folder name
+				$folders[] = $this->folderInstance($folder);
+			}
+		} else {
 		}
 		$this->mFolders = $folders;
 		return $folders;

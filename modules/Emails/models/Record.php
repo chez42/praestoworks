@@ -168,15 +168,23 @@ class Emails_Record_Model extends Vtiger_Record_Model
 					$mailer->AddAddress($email);
 				}
 				$mailer->Body = $description;
+				$extraContent = '';
 				if ($parentModule) {
 					$mailer->Body = $this->convertUrlsToTrackUrls($mailer->Body, $id);;
-					$mailer->Body .= $this->getTrackImageDetails($id, $this->isEmailTrackEnabled($parentModule));
+					$extraContent .= $this->getTrackImageDetails($id, $this->isEmailTrackEnabled($parentModule));
 				}
 				//Checking whether user requested to add signature or not
 				if ($this->get('signature') == 'Yes') {
 					$mailer->Signature = $currentUserModel->get('signature');
 					if ($mailer->Signature != '') {
-						$mailer->Body .= '<br><br>' . decode_html($mailer->Signature);
+						$extraContent .= '<br><br>' . decode_html($mailer->Signature);
+					}
+				}
+				if ($extraContent != '') {
+					if (stripos($mailer->Body, '</body>') !== false) {
+						$mailer->Body = str_ireplace('</body>', $extraContent . '</body>', $mailer->Body);
+					} else {
+						$mailer->Body .= $extraContent;
 					}
 				}
 				$mailer->Subject = decode_html(strip_tags($subject));
@@ -248,7 +256,8 @@ class Emails_Record_Model extends Vtiger_Record_Model
 					$folderName = $mailBoxModel->folder();
 					if (!empty($folderName) && !empty($mailString)) {
 						$connector = MailManager_Connector_Connector::connectorWithModel($mailBoxModel, '');
-						$message = str_replace("\n", "\r\n", $mailString);
+						$message = str_replace("\r\n", "\n", $mailString);
+						$message = str_replace("\n", "\r\n", $message);
 						if (function_exists('mb_convert_encoding')) {
 							$folderName = mb_convert_encoding($folderName, "UTF7-IMAP", "UTF-8");
 						}

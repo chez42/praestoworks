@@ -107,10 +107,10 @@ class Oauth2_Usercallback_Callbacks
 
             $authurl = $provider->getAuthorizationUrl($authParams);
 
-            /* this will force login each-time so refresh-token is obtained */
             $_SESSION['oauth2state'] = $provider->getState();
             $_SESSION['oauth2for'] = isset($req['authfor']) ? $req['authfor'] : "";
             $_SESSION['oauth2svc'] = isset($req['authservice']) ? $req['authservice'] : "";
+            $_SESSION['oauth2_account_id'] = isset($req['account_id']) ? $req['account_id'] : "";
 
             // For Google oAuth (prompt is used instead of approval_prompt) which otherwise
             // will end up with bad-request due to conflict.
@@ -143,6 +143,7 @@ class Oauth2_Usercallback_Callbacks
 
                 $oauth2for = isset($_SESSION['oauth2for']) ? $_SESSION['oauth2for'] : "";
                 $oauth2svc = isset($_SESSION['oauth2svc']) ? $_SESSION['oauth2svc'] : "";
+                $oauth2_account_id = isset($_SESSION['oauth2_account_id']) ? $_SESSION['oauth2_account_id'] : "";
 
                 if (($oauth2for == 'OutgoingServer' || $oauth2for == 'MailConverter' || $oauth2for == 'MailManager') && $oauth2svc == 'Office365') {
 
@@ -150,7 +151,7 @@ class Oauth2_Usercallback_Callbacks
 
                     if ($userinfo["email"]) {
                         $tokens = array("access_token" => $accessTokenValue, "refresh_token" => $refreshTokenValue);
-                        $response = static::updateTokensFor($config, $oauth2for, $oauth2svc, $userinfo, $tokens, $accessTokenExpiresOn);
+                        $response = static::updateTokensFor($config, $oauth2for, $oauth2svc, $userinfo, $tokens, $accessTokenExpiresOn, $oauth2_account_id);
 
                         if (!empty($response) && $oauth2for == 'MailConverter') {
                             unset($_SESSION['oauth2for']);
@@ -165,7 +166,7 @@ class Oauth2_Usercallback_Callbacks
                     }
                 } else if ($userinfo["email"] && (!isset($userinfo["email_verified"]) || $userinfo["email_verified"])) {
                     $tokens = array("access_token" => $accessTokenValue, "refresh_token" => $refreshTokenValue);
-                    static::updateTokensFor($config, $oauth2for, $oauth2svc, $userinfo, $tokens, $accessTokenExpiresOn);
+                    static::updateTokensFor($config, $oauth2for, $oauth2svc, $userinfo, $tokens, $accessTokenExpiresOn, $oauth2_account_id);
                 }
 
 
@@ -200,7 +201,7 @@ class Oauth2_Usercallback_Callbacks
         }
     }
 
-    protected static function updateTokensFor($config, $oauth2for, $oauth2svc, $userinfo, $tokens, $expireson)
+    protected static function updateTokensFor($config, $oauth2for, $oauth2svc, $userinfo, $tokens, $expireson, $oauth2_account_id = "")
     {
         $db = PearDatabase::getInstance();
 
@@ -282,7 +283,11 @@ class Oauth2_Usercallback_Callbacks
             $proxy  = $server && isset($config["Proxies"]) && isset($config["Proxies"][$server]) ? $config["Proxies"][$server] : "";
 
             if ($server) {
-                $mailbox = MailManager_Mailbox_Model::activeInstance();
+                if ($oauth2_account_id === "") {
+                    $mailbox = new MailManager_Mailbox_Model();
+                } else {
+                    $mailbox = MailManager_Mailbox_Model::activeInstance($oauth2_account_id, 'edit');
+                }
                 $mailbox->setUsername($userinfo["email"]);
                 $mailbox->setServer($server);
                 $mailbox->setPassword(json_encode($tokens));
